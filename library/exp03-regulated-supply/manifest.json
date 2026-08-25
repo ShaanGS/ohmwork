@@ -1,0 +1,351 @@
+{
+  "backend": "ltspice",
+  "checks_skipped": [],
+  "circuit": {
+    "components": [
+      {
+        "ref": "V1",
+        "type": "voltage",
+        "value": "SINE(0 16.9706 50)"
+      },
+      {
+        "part": "1N4007",
+        "ref": "D1",
+        "type": "diode"
+      },
+      {
+        "part": "1N4007",
+        "ref": "D2",
+        "type": "diode"
+      },
+      {
+        "part": "1N4007",
+        "ref": "D3",
+        "type": "diode"
+      },
+      {
+        "part": "1N4007",
+        "ref": "D4",
+        "type": "diode"
+      },
+      {
+        "ref": "C1",
+        "type": "cap",
+        "value": "470u"
+      },
+      {
+        "ref": "L1",
+        "type": "ind",
+        "value": "1m"
+      },
+      {
+        "ref": "C2",
+        "type": "cap",
+        "value": "470u"
+      },
+      {
+        "ref": "RS",
+        "type": "res",
+        "value": "220"
+      },
+      {
+        "part": "DZ6V2",
+        "ref": "DZ",
+        "type": "zener"
+      },
+      {
+        "ref": "RL",
+        "type": "res",
+        "value": "1k"
+      }
+    ],
+    "directives": [
+      ".model DZ6V2 D(BV=6.2 IBV=5m)"
+    ],
+    "nets": {
+      "0": [
+        "D3.anode",
+        "D4.anode",
+        "C1.b",
+        "C2.b",
+        "DZ.anode",
+        "RL.b"
+      ],
+      "ac1": [
+        "V1.+",
+        "D1.anode",
+        "D3.cathode"
+      ],
+      "ac2": [
+        "V1.-",
+        "D2.anode",
+        "D4.cathode"
+      ],
+      "vfilt": [
+        "L1.b",
+        "C2.a",
+        "RS.a"
+      ],
+      "vout": [
+        "RS.b",
+        "DZ.cathode",
+        "RL.a"
+      ],
+      "vrect": [
+        "D1.cathode",
+        "D2.cathode",
+        "C1.a",
+        "L1.a"
+      ]
+    }
+  },
+  "deliverables": [
+    {
+      "kind": "ltspice-schematic",
+      "path": "exp03-regulated-supply.asc",
+      "sha256": "ffb91c6b0b6afa93467a95827153f53734379ae9ca1f6e2bfd0f52757734c10b",
+      "unverified_reason": null,
+      "verified": true,
+      "verified_by": "emitted from the same circuit description that was simulated, and round-trips through the geometric parser. The exact bytes were not the ones handed to LTspice: the deliverable carries every run, with one active and the rest commented"
+    },
+    {
+      "kind": "ltspice-plot",
+      "path": "exp03-regulated-supply.plt",
+      "sha256": "678d4e19bc5d789ecb5e1634bdfe71f066c187887f57e84f4aa92c282554f8b2",
+      "unverified_reason": "batch mode does not read .plt, so no machine check exists for plot files; transcribed from LTspice's own examples, pending one visual confirmation in the GUI",
+      "verified": false,
+      "verified_by": null
+    }
+  ],
+  "design_notes": [
+    {
+      "choice": "full bridge + C-L-C pi filter + shunt zener with series resistor",
+      "item": "topology",
+      "rationale": "the standard topology for this spec; the question names the blocks but not their interconnection or the zener's series resistor",
+      "rationale_origin": "generated"
+    }
+  ],
+  "designed_values": [
+    {
+      "origin": "designed",
+      "rationale": "drops ~9 V from the ~15.2 V filter output, setting roughly 40 mA total: ~6 mA into the 1k load leaves the zener biased well above its 5 mA knee across the ripple swing",
+      "rationale_origin": "generated",
+      "ref": "RS",
+      "value": "220"
+    }
+  ],
+  "devices": {
+    "D1": {
+      "directive": null,
+      "part": "1N4007",
+      "policy": "nearest",
+      "report": "question names no diode; using 1N4007 (general-purpose rectifier default)"
+    },
+    "D2": {
+      "directive": null,
+      "part": "1N4007",
+      "policy": "nearest",
+      "report": "question names no diode; using 1N4007 (general-purpose rectifier default)"
+    },
+    "D3": {
+      "directive": null,
+      "part": "1N4007",
+      "policy": "nearest",
+      "report": "question names no diode; using 1N4007 (general-purpose rectifier default)"
+    },
+    "D4": {
+      "directive": null,
+      "part": "1N4007",
+      "policy": "nearest",
+      "report": "question names no diode; using 1N4007 (general-purpose rectifier default)"
+    },
+    "DZ": {
+      "directive": ".model DZ6V2 D(BV=6.2 IBV=5m)",
+      "part": "DZ6V2",
+      "policy": "synthesized",
+      "report": "using a synthesised model: Vz=6.2 V anchored at a 5m test current, because the question specifies exactly 6.2 V and a nearby real part would answer a slightly different question"
+    }
+  },
+  "generated": "2026-08-25",
+  "manifest_version": 1,
+  "plan": {
+    "measurements": [
+      {
+        "expr": "V(ac1)-V(ac2)",
+        "kind": "waveform_stats",
+        "name": "v_in_wave",
+        "run": "waveforms"
+      },
+      {
+        "expr": "V(vrect)",
+        "kind": "waveform_stats",
+        "name": "v_rect_wave",
+        "run": "waveforms"
+      },
+      {
+        "expr": "V(vfilt)",
+        "kind": "waveform_stats",
+        "name": "v_filt_wave",
+        "run": "waveforms"
+      },
+      {
+        "expr": "V(vout)",
+        "kind": "waveform_stats",
+        "name": "v_out_wave",
+        "run": "waveforms"
+      },
+      {
+        "expr": "I(RL)",
+        "kind": "waveform_stats",
+        "name": "i_load_wave",
+        "run": "waveforms"
+      },
+      {
+        "assert": "zener_in_breakdown",
+        "device": "DZ",
+        "kind": "regime",
+        "run": "waveforms",
+        "vz": 6.2
+      }
+    ],
+    "runs": [
+      {
+        "id": "waveforms",
+        "label": "steady-state waveforms",
+        "max_step": "100u",
+        "settle": "100m",
+        "stop": "200m",
+        "type": "tran"
+      }
+    ]
+  },
+  "prose": [],
+  "question": {
+    "asks": [
+      {
+        "answered_by": "v_in_wave",
+        "text": "input AC waveform"
+      },
+      {
+        "answered_by": "v_rect_wave",
+        "text": "bridge rectifier output waveform"
+      },
+      {
+        "answered_by": "v_filt_wave",
+        "text": "C-L-C filter output waveform"
+      },
+      {
+        "answered_by": "v_out_wave",
+        "text": "regulated DC output waveform"
+      },
+      {
+        "answered_by": "i_load_wave",
+        "text": "load current waveform"
+      }
+    ],
+    "source": {
+      "extractor": "human transcription from screenshot",
+      "file": "lab manual, Experiment 3 open ended question (screenshot)"
+    },
+    "text": "Design and simulate a regulated 6.2 V DC power supply using LTspice. The circuit should consist of a bridge rectifier, a C-L-C smoothing filter with C = 470 \u00b5F and L = 1 mH, followed by a Zener-diode voltage regulator. The bridge rectifier is driven by a 12 V RMS, 50 Hz AC supply, and a 1 k\u03a9 resistive load is connected at the regulated output. Obtain and observe the input AC waveform, bridge rectifier output waveform, C-L-C filter output waveform, regulated DC output waveform, and load current waveform using LTspice."
+  },
+  "question_id": "exp03-regulated-supply",
+  "regime_checks": [
+    {
+      "assertion": "zener_in_breakdown",
+      "device": "DZ",
+      "examined": "I(DZ) against a 0.0001 A minimum reverse current, and its terminal voltage against Vz=6.2 V, at 1115 sweep points of run 'waveforms'",
+      "held": true,
+      "reasons": [],
+      "run": "waveforms"
+    }
+  ],
+  "results": [
+    {
+      "backend": "ltspice",
+      "name": "v_in_wave",
+      "reliable": true,
+      "run": "waveforms",
+      "source": "simulation",
+      "stats": {
+        "max": 16.97048056125641,
+        "mean": 8.139164439895255e-06,
+        "min": -16.970591485500336,
+        "ripple_pp": 33.941072046756744,
+        "rms": 12.00014114961263
+      },
+      "value": 8.139164439895255e-06,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "backend": "ltspice",
+      "name": "v_rect_wave",
+      "reliable": true,
+      "run": "waveforms",
+      "source": "simulation",
+      "stats": {
+        "max": 15.732717514038086,
+        "mean": 15.228354975039663,
+        "min": 14.69326114654541,
+        "ripple_pp": 1.0394563674926758,
+        "rms": 15.229587921210383
+      },
+      "value": 15.228354975039663,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "backend": "ltspice",
+      "name": "v_filt_wave",
+      "reliable": true,
+      "run": "waveforms",
+      "source": "simulation",
+      "stats": {
+        "max": 15.802033424377441,
+        "mean": 15.228859098364538,
+        "min": 14.629167556762695,
+        "ripple_pp": 1.172865867614746,
+        "rms": 15.23079050778252
+      },
+      "value": 15.228859098364538,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "backend": "ltspice",
+      "name": "v_out_wave",
+      "reliable": true,
+      "run": "waveforms",
+      "source": "simulation",
+      "stats": {
+        "max": 6.251878261566162,
+        "mean": 6.249992867799464,
+        "min": 6.247890472412109,
+        "ripple_pp": 0.003987789154052734,
+        "rms": 6.249992921904045
+      },
+      "value": 6.249992867799464,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "backend": "ltspice",
+      "name": "i_load_wave",
+      "reliable": true,
+      "run": "waveforms",
+      "source": "simulation",
+      "stats": {
+        "max": 0.006251878570765257,
+        "mean": 0.0062499928708683,
+        "min": 0.006247890647500753,
+        "ripple_pp": 3.987923264503479e-06,
+        "rms": 0.006249992924972993
+      },
+      "value": 0.0062499928708683,
+      "verification": "external",
+      "warnings": []
+    }
+  ],
+  "warnings": []
+}

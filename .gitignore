@@ -1,0 +1,34 @@
+# Files received from classmates, kept locally as the originals behind the
+# redacted fixtures in tests/fixtures/. They still carry names and
+# registration numbers, so they must never be committed. The redacted copies
+# in tests/fixtures/ are the ones that travel; see tests/fixtures/README.md.
+circ files/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# LTspice and ngspice run artefacts
+*.raw
+*.log
+*.op.raw
+*.net
+
+# SECRETS. Never commit a key. This entry goes in BEFORE any .env exists,
+# because a key committed once lives in the history forever even after it is
+# deleted from the working tree. .env.example is the committed template and
+# holds no real values.
+.env
+.env.*
+!.env.example
+
+# Build artefacts from `pip install -e .`
+*.egg-info/
+
+# CLAUDE.md is the WORKING FILE: session state, open questions, decisions in
+# progress, what to do next. It is not documentation and it is not the story
+# a reader of this repo wants. Its durable content -- the derived format
+# facts, the incident table, the verification limits -- lives in
+# ARCHITECTURE.md, which IS committed. Excluded from the FIRST commit rather
+# than removed later, because history is forever.
+CLAUDE.md

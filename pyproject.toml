@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ohmwork"
+version = "0.1.0"
+description = "Electronics lab open-ended question solver"
+requires-python = ">=3.12"
+# LTspice raw/log parsing. The novel code here is the emitter and the
+# geometric parser; raw-file plumbing is solved elsewhere.
+dependencies = ["spicelib"]
+
+[project.optional-dependencies]
+# The generation-time model layer. Optional because every simulation,
+# measurement, regime check and library entry works without it — and because
+# no test in this repo touches the network.
+llm = ["groq"]
+anthropic = ["anthropic"]
+
+# Stated explicitly rather than auto-discovered. The repo root holds several
+# directories that LOOK like packages -- tests/, examples/, library/ -- and
+# setuptools rightly refuses to guess between them. Naming the one real
+# package is the fix; it also stops test fixtures and the published library
+# from being swept into a distribution.
+[tool.setuptools]
+packages = ["ohmwork"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = ["error::ohmwork.captions.CaptionWarning"]

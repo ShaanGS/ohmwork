@@ -1,0 +1,47 @@
+{
+  "manifest_version": 1,
+  "questions": [
+    {
+      "backend": "ltspice",
+      "generated": "2026-08-25",
+      "has_internal_results": false,
+      "has_skipped_checks": false,
+      "has_stale_prose": false,
+      "has_ungrounded_prose": false,
+      "has_unreliable_results": false,
+      "has_violated_regimes": false,
+      "path": "exp02-series-regulator/manifest.json",
+      "prose_ask_count": 0,
+      "question_id": "exp02-series-regulator",
+      "result_count": 9
+    },
+    {
+      "backend": "ltspice",
+      "generated": "2026-08-25",
+      "has_internal_results": false,
+      "has_skipped_checks": false,
+      "has_stale_prose": false,
+      "has_ungrounded_prose": false,
+      "has_unreliable_results": false,
+      "has_violated_regimes": false,
+      "path": "exp03-regulated-supply/manifest.json",
+      "prose_ask_count": 0,
+      "question_id": "exp03-regulated-supply",
+      "result_count": 5
+    },
+    {
+      "backend": "logisim-evolution",
+      "generated": "2026-08-25",
+      "has_internal_results": false,
+      "has_skipped_checks": true,
+      "has_stale_prose": false,
+      "has_ungrounded_prose": false,
+      "has_unreliable_results": false,
+      "has_violated_regimes": false,
+      "path": "exp08-priority-encoder/manifest.json",
+      "prose_ask_count": 2,
+      "question_id": "exp08-priority-encoder",
+      "result_count": 1
+    }
+  ]
+}

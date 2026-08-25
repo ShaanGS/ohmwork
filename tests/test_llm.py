@@ -1,0 +1,215 @@
+"""The provider seam. No test here touches the network or needs a key.
+
+WHAT IS BEING PROTECTED. Two things, and neither is "does the API work" —
+that can only be learned by calling it:
+
+1. **The seam is real.** Swapping Groq for Anthropic must be configuration,
+   not a code change, or the vendor has quietly become load-bearing. Both
+   providers are driven here through the same `complete(...)` call with the
+   same arguments, against fakes.
+
+2. **A stale model id says what to do about it.** Hosted catalogues change
+   faster than this repo will, so an id that is right today will 404 some
+   day. The failure has to arrive as "here is what your account can see",
+   not as a bare 404 — a guess that announces itself is recoverable.
+
+The one thing deliberately NOT faked is the request shape. A fake that
+accepted anything would let the payload drift and still pass, so the fakes
+here record what they were handed and the tests assert on it.
+"""
+
+import os
+
+import pytest
+
+from ohmwork import llm
+
+
+# ------------------------------------------------------------- fake SDKs
+
+
+class FakeGroq:
+    """Shaped like groq.Groq: .chat.completions.create and .models.list."""
+
+    def __init__(self, reply="a caption", raise_error=None, models=()):
+        self.reply, self.raise_error = reply, raise_error
+        self._models = models or ("llama-3.3-70b-versatile", "whisper-large-v3")
+        self.calls = []
+        outer = self
+
+        class Completions:
+            def create(self, **kwargs):
+                outer.calls.append(kwargs)
+                if outer.raise_error:
+                    raise outer.raise_error
+                message = type("M", (), {"content": outer.reply})()
+                choice = type("C", (), {"message": message})()
+                return type("R", (), {"choices": [choice]})()
+
+        class Chat:
+            completions = Completions()
+
+        class Models:
+            def list(self):
+                data = [type("M", (), {"id": m})() for m in outer._models]
+                return type("L", (), {"data": data})()
+
+        self.chat, self.models = Chat(), Models()
+
+
+class FakeAnthropic:
+    def __init__(self, reply="a caption"):
+        self.reply = reply
+        self.calls = []
+        outer = self
+
+        class Messages:
+            def create(self, **kwargs):
+                outer.calls.append(kwargs)
+                block = type("B", (), {"type": "text", "text": outer.reply})()
+                return type("R", (), {"content": [block],
+                                      "stop_reason": "end_turn"})()
+
+        self.messages = Messages()
+
+
+def groq(**kw):
+    return llm.GroqProvider(model="test-model", client=FakeGroq(**kw))
+
+
+def anthropic():
+    return llm.AnthropicProvider(model="test-model", client=FakeAnthropic())
+
+
+# ------------------------------------------------------- the seam is real
+
+
+def test_both_providers_answer_the_same_call():
+    """If this ever needs two different call sites, the seam has failed."""
+    for provider in (groq(), anthropic()):
+        reply = provider.complete("say something", max_tokens=100)
+        assert reply.text == "a caption"
+        assert reply.model == "test-model"
+        assert reply.provider == provider.name
+
+
+def test_the_reply_carries_its_provenance():
+    """Every other result in this project records what produced it; model
+    output is not exempt."""
+    reply = groq().complete("hello")
+    assert (reply.provider, reply.model) == ("groq", "test-model")
+
+
+def test_groq_default_provider(monkeypatch):
+    monkeypatch.delenv("OHMWORK_LLM", raising=False)
+    assert llm.DEFAULT_PROVIDER == "groq"
+
+
+def test_an_unknown_provider_lists_the_known_ones():
+    with pytest.raises(llm.LLMError) as excinfo:
+        llm.get_provider("cohere")
+    assert "groq" in str(excinfo.value) and "anthropic" in str(excinfo.value)
+
+
+def test_a_missing_key_says_which_variable_to_set(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    pytest.importorskip("groq", reason="SDK absent: the import error fires first")
+    with pytest.raises(llm.LLMError) as excinfo:
+        llm.GroqProvider()
+    assert "GROQ_API_KEY" in str(excinfo.value)
+    assert "never in a file in this repo" in str(excinfo.value)
+
+
+def test_a_missing_sdk_says_how_to_install_it(monkeypatch):
+    if "groq" in os.sys.modules:                       # pragma: no cover
+        pytest.skip("groq SDK is installed here")
+    with pytest.raises(llm.LLMError) as excinfo:
+        llm.GroqProvider()
+    assert "pip install groq" in str(excinfo.value)
+
+
+# -------------------------------------------------- request shape per vendor
+
+
+def test_a_text_request_carries_no_image_payload():
+    provider = groq()
+    provider.complete("just text")
+    assert provider.client.calls[0]["messages"][0]["content"] == "just text"
+
+
+def test_groq_sends_images_as_openai_style_data_urls():
+    provider = groq()
+    provider.complete("read this", images=[llm.Image(b"\x89PNG", "image/png")])
+    content = provider.client.calls[0]["messages"][0]["content"]
+    assert content[0] == {"type": "text", "text": "read this"}
+    assert content[1]["type"] == "image_url"
+    assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_anthropic_sends_images_as_source_blocks():
+    """The one place the two vendors genuinely differ, which is the whole
+    reason there are two classes rather than one with a flag."""
+    provider = anthropic()
+    provider.complete("read this", images=[llm.Image(b"\x89PNG", "image/png")])
+    content = provider.client.calls[0]["messages"][0]["content"]
+    assert content[0]["type"] == "image"
+    assert content[0]["source"]["media_type"] == "image/png"
+    assert content[-1] == {"type": "text", "text": "read this"}
+
+
+# --------------------------------------------- a stale model id self-corrects
+
+
+class NotFound(Exception):
+    status_code = 404
+
+
+def test_an_unknown_model_names_the_models_the_account_can_see():
+    provider = groq(raise_error=NotFound("model not found"))
+    with pytest.raises(llm.LLMError) as excinfo:
+        provider.complete("hello")
+    message = str(excinfo.value)
+    assert "test-model" in message
+    assert "llama-3.3-70b-versatile" in message        # from models.list()
+    assert "OHMWORK_LLM_MODEL" in message
+
+
+def test_a_decommissioned_model_is_recognised_too():
+    """Groq retires models rather than deleting them, and says so in prose
+    rather than only in the status code."""
+    provider = groq(raise_error=Exception("The model `x` has been decommissioned"))
+    with pytest.raises(llm.LLMError, match="OHMWORK_LLM_MODEL"):
+        provider.complete("hello")
+
+
+def test_an_ordinary_failure_is_not_dressed_up_as_a_bad_model():
+    """A rate limit reported as "pick another model" would send someone off
+    to change configuration that was never wrong."""
+    provider = groq(raise_error=Exception("rate limit exceeded"))
+    with pytest.raises(llm.LLMError) as excinfo:
+        provider.complete("hello")
+    assert "OHMWORK_LLM_MODEL" not in str(excinfo.value)
+    assert "rate limit" in str(excinfo.value)
+
+
+# ------------------------------------------------------------------ images
+
+
+def test_an_unsupported_image_type_is_refused_by_name(tmp_path):
+    bad = tmp_path / "page.bmp"
+    bad.write_bytes(b"BM")
+    with pytest.raises(llm.LLMError, match="page.bmp"):
+        llm.Image.from_path(bad)
+
+
+def test_a_png_loads_with_the_right_media_type(tmp_path):
+    path = tmp_path / "page.png"
+    path.write_bytes(b"\x89PNG\r\n")
+    assert llm.Image.from_path(path).media_type == "image/png"
+
+
+def test_vision_selects_the_multimodal_default(monkeypatch):
+    """Extraction reads a photographed page. Picking a text-only model there
+    fails at the worst moment — after the human has supplied the image."""
+    monkeypatch.delenv("OHMWORK_LLM_MODEL", raising=False)
+    assert llm.DEFAULT_VISION_MODEL["groq"] != llm.DEFAULT_MODEL["groq"]

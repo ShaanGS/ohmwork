@@ -1,0 +1,405 @@
+{
+  "backend": "ltspice",
+  "checks_skipped": [],
+  "circuit": {
+    "components": [
+      {
+        "ref": "V1",
+        "type": "voltage",
+        "value": "15"
+      },
+      {
+        "ref": "R1",
+        "type": "res",
+        "value": "1.8k"
+      },
+      {
+        "part": "DZ8V3",
+        "ref": "D1",
+        "type": "zener"
+      },
+      {
+        "part": "QNPN_BF100",
+        "ref": "Q1",
+        "type": "npn"
+      },
+      {
+        "ref": "RL",
+        "type": "res",
+        "value": "2k"
+      }
+    ],
+    "directives": [
+      ".model DZ8V3 D(BV=8.3 IBV=5m)",
+      ".model QNPN_BF100 NPN(BF=100)"
+    ],
+    "nets": {
+      "0": [
+        "V1.-",
+        "D1.anode",
+        "RL.b"
+      ],
+      "vb": [
+        "R1.b",
+        "D1.cathode",
+        "Q1.B"
+      ],
+      "vin": [
+        "V1.+",
+        "R1.a",
+        "Q1.C"
+      ],
+      "vout": [
+        "Q1.E",
+        "RL.a"
+      ]
+    }
+  },
+  "deliverables": [
+    {
+      "kind": "ltspice-schematic",
+      "path": "exp02-series-regulator.asc",
+      "sha256": "b7fdaf0f7ffa84233f0b82ca47260fc8dfe433968cf6a2cc210ae5ac7baccbce",
+      "unverified_reason": null,
+      "verified": true,
+      "verified_by": "emitted from the same circuit description that was simulated, and round-trips through the geometric parser. The exact bytes were not the ones handed to LTspice: the deliverable carries every run, with one active and the rest commented"
+    }
+  ],
+  "design_notes": [],
+  "designed_values": [],
+  "devices": {
+    "D1": {
+      "directive": ".model DZ8V3 D(BV=8.3 IBV=5m)",
+      "part": "DZ8V3",
+      "policy": "synthesized",
+      "report": "using a synthesised model: Vz=8.3 V anchored at a 5m test current, because the question specifies exactly 8.3 V and a nearby real part would answer a slightly different question"
+    },
+    "Q1": {
+      "directive": ".model QNPN_BF100 NPN(BF=100)",
+      "part": "QNPN_BF100",
+      "policy": "synthesized",
+      "report": "using a synthesised NPN(BF=100) model, the parameters the question specifies"
+    }
+  },
+  "generated": "2026-08-25",
+  "manifest_version": 1,
+  "plan": {
+    "measurements": [
+      {
+        "expr": "V(vout)",
+        "name": "vout_nominal",
+        "run": "nominal"
+      },
+      {
+        "expr": "V(vb)",
+        "guard": "cross-simulator tripwire: vb must sit near 8.292 V on any compliant backend",
+        "name": "vb_nominal",
+        "run": "nominal"
+      },
+      {
+        "expr": "I(D1)",
+        "name": "iz_nominal",
+        "run": "nominal"
+      },
+      {
+        "at": {
+          "V1": 12
+        },
+        "expr": "V(vout)",
+        "name": "vout_low",
+        "run": "linesweep"
+      },
+      {
+        "at": {
+          "V1": 20
+        },
+        "expr": "V(vout)",
+        "name": "vout_high",
+        "run": "linesweep"
+      },
+      {
+        "definition": "12 V to 20 V input, normalised to the 12 V output",
+        "formula": "100 * (vout_high - vout_low) / vout_low",
+        "kind": "derived",
+        "name": "line_reg_pct"
+      },
+      {
+        "at": {
+          "RL": "100k"
+        },
+        "expr": "V(vout)",
+        "name": "vout_noload",
+        "run": "loadsweep"
+      },
+      {
+        "at": {
+          "RL": "500"
+        },
+        "expr": "V(vout)",
+        "name": "vout_fullload",
+        "run": "loadsweep"
+      },
+      {
+        "definition": "no-load to full-load, normalised to full-load",
+        "formula": "100 * (vout_noload - vout_fullload) / vout_fullload",
+        "kind": "derived",
+        "name": "load_reg_pct"
+      },
+      {
+        "assert": "zener_in_breakdown",
+        "device": "D1",
+        "kind": "regime",
+        "run": "nominal",
+        "vz": 8.3
+      },
+      {
+        "assert": "bjt_active",
+        "device": "Q1",
+        "kind": "regime",
+        "run": "nominal"
+      },
+      {
+        "assert": "zener_in_breakdown",
+        "device": "D1",
+        "kind": "regime",
+        "run": "linesweep",
+        "vz": 8.3
+      },
+      {
+        "assert": "bjt_active",
+        "device": "Q1",
+        "kind": "regime",
+        "run": "linesweep"
+      },
+      {
+        "assert": "zener_in_breakdown",
+        "device": "D1",
+        "kind": "regime",
+        "run": "loadsweep",
+        "vz": 8.3
+      },
+      {
+        "assert": "bjt_active",
+        "device": "Q1",
+        "kind": "regime",
+        "run": "loadsweep"
+      }
+    ],
+    "runs": [
+      {
+        "id": "nominal",
+        "type": "op"
+      },
+      {
+        "id": "linesweep",
+        "label": "line regulation",
+        "sweep": {
+          "source": "V1",
+          "start": 12,
+          "step": 1,
+          "stop": 20
+        },
+        "type": "dc"
+      },
+      {
+        "component": "RL",
+        "id": "loadsweep",
+        "label": "load regulation",
+        "type": "param_sweep",
+        "values": [
+          "100k",
+          "5k",
+          "2k",
+          "1k",
+          "500"
+        ]
+      }
+    ]
+  },
+  "prose": [],
+  "question": {
+    "asks": [
+      {
+        "answered_by": "vout_nominal",
+        "text": "output voltage"
+      },
+      {
+        "answered_by": "line_reg_pct",
+        "text": "line regulation"
+      },
+      {
+        "answered_by": "load_reg_pct",
+        "text": "load regulation"
+      },
+      {
+        "answered_by": "iz_nominal",
+        "text": "Zener diode current"
+      }
+    ],
+    "source": {
+      "extractor": "human transcription from screenshot",
+      "file": "lab manual, section 2.14 open ended question (screenshot, circuit diagram in image)"
+    },
+    "text": "Calculate the output voltage in both load and line regulation and Zener diode current in the regulator circuit shown below using LTspice."
+  },
+  "question_id": "exp02-series-regulator",
+  "regime_checks": [
+    {
+      "assertion": "zener_in_breakdown",
+      "device": "D1",
+      "examined": "I(D1) against a 0.0001 A minimum reverse current, and its terminal voltage against Vz=8.3 V, at 1 operating point of run 'nominal'",
+      "held": true,
+      "reasons": [],
+      "run": "nominal"
+    },
+    {
+      "assertion": "bjt_active",
+      "device": "Q1",
+      "examined": "Vce of Q1 against 0.2 V, and Ib for cut-off, at 1 operating point of run 'nominal'",
+      "held": true,
+      "reasons": [],
+      "run": "nominal"
+    },
+    {
+      "assertion": "zener_in_breakdown",
+      "device": "D1",
+      "examined": "I(D1) against a 0.0001 A minimum reverse current, and its terminal voltage against Vz=8.3 V, at 9 sweep points of run 'linesweep'",
+      "held": true,
+      "reasons": [],
+      "run": "linesweep"
+    },
+    {
+      "assertion": "bjt_active",
+      "device": "Q1",
+      "examined": "Vce of Q1 against 0.2 V, and Ib for cut-off, at 9 sweep points of run 'linesweep'",
+      "held": true,
+      "reasons": [],
+      "run": "linesweep"
+    },
+    {
+      "assertion": "zener_in_breakdown",
+      "device": "D1",
+      "examined": "I(D1) against a 0.0001 A minimum reverse current, and its terminal voltage against Vz=8.3 V, at 5 sweep points of run 'loadsweep'",
+      "held": true,
+      "reasons": [],
+      "run": "loadsweep"
+    },
+    {
+      "assertion": "bjt_active",
+      "device": "Q1",
+      "examined": "Vce of Q1 against 0.2 V, and Ib for cut-off, at 5 sweep points of run 'loadsweep'",
+      "held": true,
+      "reasons": [],
+      "run": "loadsweep"
+    }
+  ],
+  "results": [
+    {
+      "backend": "ltspice",
+      "name": "vout_nominal",
+      "reliable": true,
+      "run": "nominal",
+      "source": "simulation",
+      "value": 7.48403263092041,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "backend": "ltspice",
+      "name": "vb_nominal",
+      "reliable": true,
+      "run": "nominal",
+      "source": "simulation",
+      "value": 8.292138713092461,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "backend": "ltspice",
+      "name": "iz_nominal",
+      "reliable": true,
+      "run": "nominal",
+      "source": "simulation",
+      "value": -0.0036895410157740116,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "at": {
+        "V1": 12
+      },
+      "backend": "ltspice",
+      "name": "vout_low",
+      "reliable": true,
+      "run": "linesweep",
+      "source": "simulation",
+      "value": 7.46865177154541,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "at": {
+        "V1": 20
+      },
+      "backend": "ltspice",
+      "name": "vout_high",
+      "reliable": true,
+      "run": "linesweep",
+      "source": "simulation",
+      "value": 7.498468399047852,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "backend": "ltspice",
+      "definition": "12 V to 20 V input, normalised to the 12 V output",
+      "formula": "100 * (vout_high - vout_low) / vout_low",
+      "name": "line_reg_pct",
+      "reliable": true,
+      "run": null,
+      "source": "derived",
+      "value": 0.39922369410820396,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "at": {
+        "RL": "100k"
+      },
+      "backend": "ltspice",
+      "name": "vout_noload",
+      "reliable": true,
+      "run": "loadsweep",
+      "source": "simulation",
+      "value": 7.585122108459473,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "at": {
+        "RL": "500"
+      },
+      "backend": "ltspice",
+      "name": "vout_fullload",
+      "reliable": true,
+      "run": "loadsweep",
+      "source": "simulation",
+      "value": 7.447519779205322,
+      "verification": "external",
+      "warnings": []
+    },
+    {
+      "backend": "ltspice",
+      "definition": "no-load to full-load, normalised to full-load",
+      "formula": "100 * (vout_noload - vout_fullload) / vout_fullload",
+      "name": "load_reg_pct",
+      "reliable": true,
+      "run": null,
+      "source": "derived",
+      "value": 1.8476262344191192,
+      "verification": "external",
+      "warnings": []
+    }
+  ],
+  "warnings": []
+}

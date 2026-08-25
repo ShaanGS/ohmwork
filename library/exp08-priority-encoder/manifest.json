@@ -1,0 +1,1023 @@
+{
+  "backend": "logisim-evolution",
+  "checks_skipped": [
+    {
+      "name": "geometric round trip",
+      "reason": "the .circ geometric parser is not built (deferred to v1.1 with check-mine mode), so no round trip ran. Structure, types, pins and labels were checked here; geometry was not. Note what replaces it and is stronger: Logisim itself evaluates the emitted file, so a geometry bug shows up as a wrong truth table rather than as our parser agreeing with our emitter's mistake."
+    },
+    {
+      "name": "device policy",
+      "reason": "the logisim-2.7.1 target has no device models, so no part was chosen, substituted, or synthesised"
+    }
+  ],
+  "circuit": {
+    "components": [
+      {
+        "ref": "I3",
+        "type": "input_pin"
+      },
+      {
+        "ref": "I2",
+        "type": "input_pin"
+      },
+      {
+        "ref": "I1",
+        "type": "input_pin"
+      },
+      {
+        "ref": "I0",
+        "type": "input_pin"
+      },
+      {
+        "ref": "EN",
+        "type": "input_pin"
+      },
+      {
+        "ref": "Y1",
+        "type": "output_pin"
+      },
+      {
+        "ref": "Y0",
+        "type": "output_pin"
+      },
+      {
+        "ref": "V",
+        "type": "output_pin"
+      },
+      {
+        "ref": "G1",
+        "type": "not"
+      },
+      {
+        "ref": "G2",
+        "type": "and2"
+      },
+      {
+        "ref": "G3",
+        "type": "or2"
+      },
+      {
+        "ref": "G4",
+        "type": "or2"
+      },
+      {
+        "ref": "G5",
+        "type": "or4"
+      },
+      {
+        "ref": "G6",
+        "type": "and2"
+      },
+      {
+        "ref": "G7",
+        "type": "and2"
+      },
+      {
+        "ref": "G8",
+        "type": "and2"
+      }
+    ],
+    "directives": [],
+    "nets": {
+      "en": [
+        "EN.pin",
+        "G6.in1",
+        "G7.in1",
+        "G8.in1"
+      ],
+      "i0": [
+        "I0.pin",
+        "G5.in3"
+      ],
+      "i1": [
+        "I1.pin",
+        "G2.in0",
+        "G5.in2"
+      ],
+      "i2": [
+        "I2.pin",
+        "G1.in0",
+        "G4.in1",
+        "G5.in1"
+      ],
+      "i3": [
+        "I3.pin",
+        "G3.in0",
+        "G4.in0",
+        "G5.in0"
+      ],
+      "n2": [
+        "G1.out",
+        "G2.in1"
+      ],
+      "t0": [
+        "G2.out",
+        "G3.in1"
+      ],
+      "v": [
+        "G8.out",
+        "V.pin"
+      ],
+      "vpre": [
+        "G5.out",
+        "G8.in0"
+      ],
+      "y0": [
+        "G7.out",
+        "Y0.pin"
+      ],
+      "y0pre": [
+        "G3.out",
+        "G7.in0"
+      ],
+      "y1": [
+        "G6.out",
+        "Y1.pin"
+      ],
+      "y1pre": [
+        "G4.out",
+        "G6.in0"
+      ]
+    }
+  },
+  "deliverables": [
+    {
+      "kind": "logisim-circuit",
+      "path": "exp08-priority-encoder.circ",
+      "sha256": "0994fd86e40987e35cc0e27fdf703abdfc9692a32d844e37577e99b43ea310a2",
+      "unverified_reason": null,
+      "verified": true,
+      "verified_by": "byte-identical to exhaustive.circ, the file logisim-evolution actually evaluated \u2014 compared, not assumed"
+    }
+  ],
+  "design_notes": [
+    {
+      "choice": "gate primitives only; Logisim's built-in Plexers Priority Encoder is banned",
+      "item": "constraint: primitives_only",
+      "rationale": "the question does NOT ask for primitives only. It is our constraint, added because dropping in the library component satisfies the wording and defeats the exercise entirely. Declared here rather than smuggled in, because presenting our pedagogical choice as the question's requirement would misrepresent the assignment.",
+      "rationale_origin": "generated"
+    },
+    {
+      "choice": "I3 highest, I0 lowest",
+      "item": "priority order",
+      "rationale": "conventional MSB-first priority; the question does not state an order, so this is a choice and the truth table only makes sense once it is stated",
+      "rationale_origin": "generated"
+    },
+    {
+      "choice": "AND the enable into all three outputs",
+      "item": "enable gating",
+      "rationale": "EN=0 then forces Y1=Y0=V=0, so a disabled encoder is unambiguous rather than showing a stale code. The question requires an enable input but does not define disabled-output behaviour.",
+      "rationale_origin": "generated"
+    },
+    {
+      "choice": "inputs I3..I0, outputs Y1 (MSB), Y0 (LSB), V (valid), enable EN",
+      "item": "signal naming",
+      "rationale": "the question names none of them. Recorded because the human implementation cross-check (tests/fixtures/logisim/exp8_gates.circ) uses D3..D0 / OUT 1 / OUT 2 / V, and comparing the two requires a stated name mapping rather than an assumed one.",
+      "rationale_origin": "generated"
+    }
+  ],
+  "designed_values": [],
+  "devices": {},
+  "generated": "2026-08-25",
+  "manifest_version": 1,
+  "plan": {
+    "measurements": [
+      {
+        "kind": "table",
+        "name": "truth_table",
+        "outputs": [
+          "Y1",
+          "Y0",
+          "V"
+        ],
+        "run": "exhaustive"
+      },
+      {
+        "assert": "no_floating_inputs",
+        "kind": "regime",
+        "run": "exhaustive"
+      },
+      {
+        "assert": "all_outputs_driven",
+        "kind": "regime",
+        "run": "exhaustive"
+      },
+      {
+        "assert": "no_combinational_loops",
+        "kind": "regime",
+        "run": "exhaustive"
+      }
+    ],
+    "runs": [
+      {
+        "id": "exhaustive",
+        "inputs": [
+          "EN",
+          "I3",
+          "I2",
+          "I1",
+          "I0"
+        ],
+        "label": "all 32 input combinations",
+        "type": "truth_table"
+      }
+    ]
+  },
+  "prose": [
+    {
+      "evidence": [],
+      "quoted_notes": [
+        {
+          "authorship": "[generated, reviewed at input gate]",
+          "choice": "gate primitives only; Logisim's built-in Plexers Priority Encoder is banned",
+          "item": "constraint: primitives_only",
+          "rationale": "the question does NOT ask for primitives only. It is our constraint, added because dropping in the library component satisfies the wording and defeats the exercise entirely. Declared here rather than smuggled in, because presenting our pedagogical choice as the question's requirement would misrepresent the assignment."
+        },
+        {
+          "authorship": "[generated, reviewed at input gate]",
+          "choice": "I3 highest, I0 lowest",
+          "item": "priority order",
+          "rationale": "conventional MSB-first priority; the question does not state an order, so this is a choice and the truth table only makes sense once it is stated"
+        },
+        {
+          "authorship": "[generated, reviewed at input gate]",
+          "choice": "AND the enable into all three outputs",
+          "item": "enable gating",
+          "rationale": "EN=0 then forces Y1=Y0=V=0, so a disabled encoder is unambiguous rather than showing a stale code. The question requires an enable input but does not define disabled-output behaviour."
+        },
+        {
+          "authorship": "[generated, reviewed at input gate]",
+          "choice": "inputs I3..I0, outputs Y1 (MSB), Y0 (LSB), V (valid), enable EN",
+          "item": "signal naming",
+          "rationale": "the question names none of them. Recorded because the human implementation cross-check (tests/fixtures/logisim/exp8_gates.circ) uses D3..D0 / OUT 1 / OUT 2 / V, and comparing the two requires a stated name mapping rather than an assumed one."
+        }
+      ],
+      "text": "Explain your design choices",
+      "tier": "prose_from_design"
+    },
+    {
+      "answer": "With the enable high, every row above resolves to the index of the highest-numbered active input and to nothing else. The seven rows with I3 high all read Y1 Y0 = 1 1, the three where I2 is the highest active input read 1 0, and the single row where I1 is highest reads 0 1 \u2014 in each case the lower-numbered inputs that are also high change nothing. That is the whole difference between a priority encoder and a plain encoder: a plain one would assert several outputs at once here and produce a code that means nothing. With the enable low, all sixteen rows read Y1 = Y0 = V = 0 whatever the data inputs do, so a disabled encoder never presents a stale code. Note the limit the table also shows: EN = 0 with every input high is indistinguishable at the output pins from EN = 1 with no input active \u2014 both are 0 0 0. V separates 'a valid code is on the outputs' from 'there is nothing to report'; it does not separate disabled from idle, and no output here does.",
+      "answer_authorship": "[generated, reviewed at input gate]",
+      "answer_freshness": "fresh",
+      "evidence": [
+        {
+          "backend": "logisim-evolution",
+          "columns": [
+            "EN",
+            "I3",
+            "I2",
+            "I1",
+            "I0",
+            "Y1",
+            "Y0",
+            "V"
+          ],
+          "label": "two or more data inputs active, enable on",
+          "measurement": "truth_table",
+          "rows": [
+            [
+              1,
+              0,
+              0,
+              1,
+              1,
+              0,
+              1,
+              1
+            ],
+            [
+              1,
+              0,
+              1,
+              0,
+              1,
+              1,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              1,
+              1,
+              0,
+              1,
+              0,
+              1
+            ],
+            [
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              0,
+              0,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              0,
+              1,
+              0,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              0,
+              0,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              0,
+              1,
+              1,
+              1
+            ],
+            [
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          ],
+          "total_rows": 32,
+          "verification": "external"
+        },
+        {
+          "backend": "logisim-evolution",
+          "columns": [
+            "EN",
+            "I3",
+            "I2",
+            "I1",
+            "I0",
+            "Y1",
+            "Y0",
+            "V"
+          ],
+          "label": "enable disabled",
+          "measurement": "truth_table",
+          "rows": [
+            [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              1,
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0,
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              1,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              1,
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              1,
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              0,
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              1,
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              1,
+              1,
+              1,
+              0,
+              0,
+              0
+            ]
+          ],
+          "total_rows": 32,
+          "verification": "external"
+        }
+      ],
+      "quoted_notes": [],
+      "text": "Discuss how your circuit behaves when multiple inputs are active and when the enable signal is disabled",
+      "tier": "prose_from_results"
+    }
+  ],
+  "question": {
+    "asks": [
+      {
+        "answered_by": "truth_table",
+        "text": "show the truth table"
+      },
+      {
+        "answered_by": "truth_table",
+        "text": "test all possible input combinations"
+      },
+      {
+        "kind": "prose",
+        "prose": {
+          "notes": [
+            "constraint: primitives_only",
+            "priority order",
+            "enable gating",
+            "signal naming"
+          ],
+          "tier": "prose_from_design"
+        },
+        "text": "Explain your design choices"
+      },
+      {
+        "kind": "prose",
+        "prose": {
+          "answer": "With the enable high, every row above resolves to the index of the highest-numbered active input and to nothing else. The seven rows with I3 high all read Y1 Y0 = 1 1, the three where I2 is the highest active input read 1 0, and the single row where I1 is highest reads 0 1 \u2014 in each case the lower-numbered inputs that are also high change nothing. That is the whole difference between a priority encoder and a plain encoder: a plain one would assert several outputs at once here and produce a code that means nothing. With the enable low, all sixteen rows read Y1 = Y0 = V = 0 whatever the data inputs do, so a disabled encoder never presents a stale code. Note the limit the table also shows: EN = 0 with every input high is indistinguishable at the output pins from EN = 1 with no input active \u2014 both are 0 0 0. V separates 'a valid code is on the outputs' from 'there is nothing to report'; it does not separate disabled from idle, and no output here does.",
+          "answer_evidence": "sha256:a530b049697dc09fa7ed32d26a515171",
+          "answer_origin": "generated",
+          "evidence": [
+            {
+              "label": "two or more data inputs active, enable on",
+              "measurement": "truth_table",
+              "select": {
+                "equals": {
+                  "EN": 1
+                },
+                "min_high": {
+                  "columns": [
+                    "I3",
+                    "I2",
+                    "I1",
+                    "I0"
+                  ],
+                  "count": 2
+                }
+              }
+            },
+            {
+              "label": "enable disabled",
+              "measurement": "truth_table",
+              "select": {
+                "equals": {
+                  "EN": 0
+                }
+              }
+            }
+          ],
+          "tier": "prose_from_results"
+        },
+        "text": "Discuss how your circuit behaves when multiple inputs are active and when the enable signal is disabled"
+      }
+    ],
+    "source": {
+      "extractor": "human transcription from screenshot, verified against the image character by character",
+      "file": "lab manual, section 8.2 Open Ended Question (screenshot)"
+    },
+    "text": "Design and simulate a 4-to-2 priority encoder using Logisim. Your circuit should include an enable input and a 'valid output' signal. Explain your design choices, show the truth table, and test all possible input combinations. Discuss how your circuit behaves when multiple inputs are active and when the enable signal is disabled."
+  },
+  "question_id": "exp08-priority-encoder",
+  "regime_checks": [
+    {
+      "assertion": "no_floating_inputs",
+      "device": null,
+      "examined": "20 input port(s) across 16 components, each for membership of a net that has a driver",
+      "held": true,
+      "reasons": [],
+      "run": "exhaustive"
+    },
+    {
+      "assertion": "all_outputs_driven",
+      "device": null,
+      "examined": "3 output pin(s), each for a net carrying a driving port",
+      "held": true,
+      "reasons": [],
+      "run": "exhaustive"
+    },
+    {
+      "assertion": "no_combinational_loops",
+      "device": null,
+      "examined": "the driver graph over 16 components, depth-first, for any cycle",
+      "held": true,
+      "reasons": [],
+      "run": "exhaustive"
+    }
+  ],
+  "results": [
+    {
+      "backend": "logisim-evolution",
+      "name": "truth_table",
+      "reliable": true,
+      "run": "exhaustive",
+      "source": "simulation",
+      "table": {
+        "columns": [
+          "EN",
+          "I3",
+          "I2",
+          "I1",
+          "I0",
+          "Y1",
+          "Y0",
+          "V"
+        ],
+        "notes": [
+          "read in compatibility mode: the file was written by original Logisim (2.7.1), not Logisim Evolution"
+        ],
+        "rows": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0,
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            1,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1
+          ],
+          [
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1
+          ],
+          [
+            1,
+            0,
+            0,
+            1,
+            1,
+            0,
+            1,
+            1
+          ],
+          [
+            1,
+            0,
+            1,
+            0,
+            0,
+            1,
+            0,
+            1
+          ],
+          [
+            1,
+            0,
+            1,
+            0,
+            1,
+            1,
+            0,
+            1
+          ],
+          [
+            1,
+            0,
+            1,
+            1,
+            0,
+            1,
+            0,
+            1
+          ],
+          [
+            1,
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            1
+          ],
+          [
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            0,
+            1,
+            0,
+            1,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            1,
+            0,
+            0,
+            1,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        ]
+      },
+      "value": null,
+      "verification": "external",
+      "warnings": []
+    }
+  ],
+  "warnings": []
+}

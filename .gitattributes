@@ -1,0 +1,13 @@
+# Fixtures are EVIDENCE. Their bytes are the measurement, including their
+# line endings: tests/test_logisim_geometry.py pins that two .circ files are
+# CRLF and one is bare LF, which is how it knows line endings are not an
+# invariant of the format. Git's autocrlf would silently normalise that on
+# checkout and destroy the fact.
+#
+# -text disables all end-of-line conversion. Do not "tidy" these.
+tests/fixtures/** -text
+
+# Generated and reference circuit files are compared byte-wise in places too.
+*.asc -text
+*.circ -text
+*.plt -text

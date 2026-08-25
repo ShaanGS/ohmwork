@@ -1,0 +1,215 @@
+{
+  "question": "Calculate the output voltage in both load and line regulation and Zener diode current in the regulator circuit shown below using LTspice.",
+  "circuit": {
+    "components": [
+      {
+        "ref": "V1",
+        "type": "voltage",
+        "value": "15"
+      },
+      {
+        "ref": "R1",
+        "type": "res",
+        "value": "1.8k"
+      },
+      {
+        "ref": "D1",
+        "type": "zener",
+        "device": {
+          "vz": 8.3,
+          "exact": true
+        }
+      },
+      {
+        "ref": "Q1",
+        "type": "npn",
+        "device": {
+          "params": {
+            "BF": 100
+          }
+        }
+      },
+      {
+        "ref": "RL",
+        "type": "res",
+        "value": "2k"
+      }
+    ],
+    "nets": {
+      "vin": [
+        "V1.+",
+        "R1.a",
+        "Q1.C"
+      ],
+      "vb": [
+        "R1.b",
+        "D1.cathode",
+        "Q1.B"
+      ],
+      "vout": [
+        "Q1.E",
+        "RL.a"
+      ],
+      "0": [
+        "V1.-",
+        "D1.anode",
+        "RL.b"
+      ]
+    }
+  },
+  "asks": [
+    {
+      "text": "output voltage",
+      "answered_by": "vout_nominal"
+    },
+    {
+      "text": "line regulation",
+      "answered_by": "line_reg_pct"
+    },
+    {
+      "text": "load regulation",
+      "answered_by": "load_reg_pct"
+    },
+    {
+      "text": "Zener diode current",
+      "answered_by": "iz_nominal"
+    }
+  ],
+  "analysis": {
+    "runs": [
+      {
+        "id": "nominal",
+        "type": "op"
+      },
+      {
+        "id": "linesweep",
+        "type": "dc",
+        "label": "line regulation",
+        "sweep": {
+          "source": "V1",
+          "start": 12,
+          "stop": 20,
+          "step": 1
+        }
+      },
+      {
+        "id": "loadsweep",
+        "type": "param_sweep",
+        "label": "load regulation",
+        "component": "RL",
+        "values": [
+          "100k",
+          "5k",
+          "2k",
+          "1k",
+          "500"
+        ]
+      }
+    ],
+    "measurements": [
+      {
+        "name": "vout_nominal",
+        "run": "nominal",
+        "expr": "V(vout)"
+      },
+      {
+        "name": "vb_nominal",
+        "run": "nominal",
+        "expr": "V(vb)",
+        "guard": "cross-simulator tripwire: vb must sit near 8.292 V on any compliant backend"
+      },
+      {
+        "name": "iz_nominal",
+        "run": "nominal",
+        "expr": "I(D1)"
+      },
+      {
+        "name": "vout_low",
+        "run": "linesweep",
+        "expr": "V(vout)",
+        "at": {
+          "V1": 12
+        }
+      },
+      {
+        "name": "vout_high",
+        "run": "linesweep",
+        "expr": "V(vout)",
+        "at": {
+          "V1": 20
+        }
+      },
+      {
+        "name": "line_reg_pct",
+        "kind": "derived",
+        "formula": "100 * (vout_high - vout_low) / vout_low",
+        "definition": "12 V to 20 V input, normalised to the 12 V output"
+      },
+      {
+        "name": "vout_noload",
+        "run": "loadsweep",
+        "expr": "V(vout)",
+        "at": {
+          "RL": "100k"
+        }
+      },
+      {
+        "name": "vout_fullload",
+        "run": "loadsweep",
+        "expr": "V(vout)",
+        "at": {
+          "RL": "500"
+        }
+      },
+      {
+        "name": "load_reg_pct",
+        "kind": "derived",
+        "formula": "100 * (vout_noload - vout_fullload) / vout_fullload",
+        "definition": "no-load to full-load, normalised to full-load"
+      },
+      {
+        "kind": "regime",
+        "run": "nominal",
+        "assert": "zener_in_breakdown",
+        "device": "D1",
+        "vz": 8.3
+      },
+      {
+        "kind": "regime",
+        "run": "nominal",
+        "assert": "bjt_active",
+        "device": "Q1"
+      },
+      {
+        "kind": "regime",
+        "run": "linesweep",
+        "assert": "zener_in_breakdown",
+        "device": "D1",
+        "vz": 8.3
+      },
+      {
+        "kind": "regime",
+        "run": "linesweep",
+        "assert": "bjt_active",
+        "device": "Q1"
+      },
+      {
+        "kind": "regime",
+        "run": "loadsweep",
+        "assert": "zener_in_breakdown",
+        "device": "D1",
+        "vz": 8.3
+      },
+      {
+        "kind": "regime",
+        "run": "loadsweep",
+        "assert": "bjt_active",
+        "device": "Q1"
+      }
+    ]
+  },
+  "source": {
+    "file": "lab manual, section 2.14 open ended question (screenshot, circuit diagram in image)",
+    "extractor": "human transcription from screenshot"
+  }
+}

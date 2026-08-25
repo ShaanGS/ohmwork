@@ -1,0 +1,271 @@
+{
+  "target": "logisim-2.7.1",
+  "constraints": {
+    "primitives_only": true
+  },
+  "question": "Design and simulate a 4-to-2 priority encoder using Logisim. Your circuit should include an enable input and a 'valid output' signal. Explain your design choices, show the truth table, and test all possible input combinations. Discuss how your circuit behaves when multiple inputs are active and when the enable signal is disabled.",
+  "source": {
+    "file": "lab manual, section 8.2 Open Ended Question (screenshot)",
+    "extractor": "human transcription from screenshot, verified against the image character by character"
+  },
+  "design_notes": [
+    {
+      "item": "constraint: primitives_only",
+      "choice": "gate primitives only; Logisim's built-in Plexers Priority Encoder is banned",
+      "rationale": "the question does NOT ask for primitives only. It is our constraint, added because dropping in the library component satisfies the wording and defeats the exercise entirely. Declared here rather than smuggled in, because presenting our pedagogical choice as the question's requirement would misrepresent the assignment.",
+      "rationale_origin": "generated"
+    },
+    {
+      "item": "priority order",
+      "choice": "I3 highest, I0 lowest",
+      "rationale": "conventional MSB-first priority; the question does not state an order, so this is a choice and the truth table only makes sense once it is stated",
+      "rationale_origin": "generated"
+    },
+    {
+      "item": "enable gating",
+      "choice": "AND the enable into all three outputs",
+      "rationale": "EN=0 then forces Y1=Y0=V=0, so a disabled encoder is unambiguous rather than showing a stale code. The question requires an enable input but does not define disabled-output behaviour.",
+      "rationale_origin": "generated"
+    },
+    {
+      "item": "signal naming",
+      "choice": "inputs I3..I0, outputs Y1 (MSB), Y0 (LSB), V (valid), enable EN",
+      "rationale": "the question names none of them. Recorded because the human implementation cross-check (tests/fixtures/logisim/exp8_gates.circ) uses D3..D0 / OUT 1 / OUT 2 / V, and comparing the two requires a stated name mapping rather than an assumed one.",
+      "rationale_origin": "generated"
+    }
+  ],
+  "circuit": {
+    "components": [
+      {
+        "ref": "I3",
+        "type": "input_pin"
+      },
+      {
+        "ref": "I2",
+        "type": "input_pin"
+      },
+      {
+        "ref": "I1",
+        "type": "input_pin"
+      },
+      {
+        "ref": "I0",
+        "type": "input_pin"
+      },
+      {
+        "ref": "EN",
+        "type": "input_pin"
+      },
+      {
+        "ref": "Y1",
+        "type": "output_pin"
+      },
+      {
+        "ref": "Y0",
+        "type": "output_pin"
+      },
+      {
+        "ref": "V",
+        "type": "output_pin"
+      },
+      {
+        "ref": "G1",
+        "type": "not"
+      },
+      {
+        "ref": "G2",
+        "type": "and2"
+      },
+      {
+        "ref": "G3",
+        "type": "or2"
+      },
+      {
+        "ref": "G4",
+        "type": "or2"
+      },
+      {
+        "ref": "G5",
+        "type": "or4"
+      },
+      {
+        "ref": "G6",
+        "type": "and2"
+      },
+      {
+        "ref": "G7",
+        "type": "and2"
+      },
+      {
+        "ref": "G8",
+        "type": "and2"
+      }
+    ],
+    "nets": {
+      "i3": [
+        "I3.pin",
+        "G3.in0",
+        "G4.in0",
+        "G5.in0"
+      ],
+      "i2": [
+        "I2.pin",
+        "G1.in0",
+        "G4.in1",
+        "G5.in1"
+      ],
+      "i1": [
+        "I1.pin",
+        "G2.in0",
+        "G5.in2"
+      ],
+      "i0": [
+        "I0.pin",
+        "G5.in3"
+      ],
+      "en": [
+        "EN.pin",
+        "G6.in1",
+        "G7.in1",
+        "G8.in1"
+      ],
+      "n2": [
+        "G1.out",
+        "G2.in1"
+      ],
+      "t0": [
+        "G2.out",
+        "G3.in1"
+      ],
+      "y0pre": [
+        "G3.out",
+        "G7.in0"
+      ],
+      "y1pre": [
+        "G4.out",
+        "G6.in0"
+      ],
+      "vpre": [
+        "G5.out",
+        "G8.in0"
+      ],
+      "y1": [
+        "G6.out",
+        "Y1.pin"
+      ],
+      "y0": [
+        "G7.out",
+        "Y0.pin"
+      ],
+      "v": [
+        "G8.out",
+        "V.pin"
+      ]
+    }
+  },
+  "asks": [
+    {
+      "text": "show the truth table",
+      "answered_by": "truth_table"
+    },
+    {
+      "text": "test all possible input combinations",
+      "answered_by": "truth_table"
+    },
+    {
+      "text": "Explain your design choices",
+      "kind": "prose",
+      "prose": {
+        "tier": "prose_from_design",
+        "notes": [
+          "constraint: primitives_only",
+          "priority order",
+          "enable gating",
+          "signal naming"
+        ]
+      }
+    },
+    {
+      "text": "Discuss how your circuit behaves when multiple inputs are active and when the enable signal is disabled",
+      "kind": "prose",
+      "prose": {
+        "tier": "prose_from_results",
+        "evidence": [
+          {
+            "label": "two or more data inputs active, enable on",
+            "measurement": "truth_table",
+            "select": {
+              "equals": {
+                "EN": 1
+              },
+              "min_high": {
+                "columns": [
+                  "I3",
+                  "I2",
+                  "I1",
+                  "I0"
+                ],
+                "count": 2
+              }
+            }
+          },
+          {
+            "label": "enable disabled",
+            "measurement": "truth_table",
+            "select": {
+              "equals": {
+                "EN": 0
+              }
+            }
+          }
+        ],
+        "answer": "With the enable high, every row above resolves to the index of the highest-numbered active input and to nothing else. The seven rows with I3 high all read Y1 Y0 = 1 1, the three where I2 is the highest active input read 1 0, and the single row where I1 is highest reads 0 1 — in each case the lower-numbered inputs that are also high change nothing. That is the whole difference between a priority encoder and a plain encoder: a plain one would assert several outputs at once here and produce a code that means nothing. With the enable low, all sixteen rows read Y1 = Y0 = V = 0 whatever the data inputs do, so a disabled encoder never presents a stale code. Note the limit the table also shows: EN = 0 with every input high is indistinguishable at the output pins from EN = 1 with no input active — both are 0 0 0. V separates 'a valid code is on the outputs' from 'there is nothing to report'; it does not separate disabled from idle, and no output here does.",
+        "answer_origin": "generated",
+        "answer_evidence": "sha256:a530b049697dc09fa7ed32d26a515171"
+      }
+    }
+  ],
+  "analysis": {
+    "runs": [
+      {
+        "id": "exhaustive",
+        "type": "truth_table",
+        "label": "all 32 input combinations",
+        "inputs": [
+          "EN",
+          "I3",
+          "I2",
+          "I1",
+          "I0"
+        ]
+      }
+    ],
+    "measurements": [
+      {
+        "name": "truth_table",
+        "run": "exhaustive",
+        "kind": "table",
+        "outputs": [
+          "Y1",
+          "Y0",
+          "V"
+        ]
+      },
+      {
+        "kind": "regime",
+        "run": "exhaustive",
+        "assert": "no_floating_inputs"
+      },
+      {
+        "kind": "regime",
+        "run": "exhaustive",
+        "assert": "all_outputs_driven"
+      },
+      {
+        "kind": "regime",
+        "run": "exhaustive",
+        "assert": "no_combinational_loops"
+      }
+    ]
+  }
+}

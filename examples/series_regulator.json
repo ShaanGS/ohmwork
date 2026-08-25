@@ -1,0 +1,53 @@
+{
+  "components": [
+    {
+      "ref": "V1",
+      "type": "voltage",
+      "value": "15"
+    },
+    {
+      "ref": "R1",
+      "type": "res",
+      "value": "1.8k"
+    },
+    {
+      "ref": "D1",
+      "type": "zener",
+      "part": "BZX84B8V2LY"
+    },
+    {
+      "ref": "Q1",
+      "type": "npn",
+      "part": "2N3904"
+    },
+    {
+      "ref": "RL",
+      "type": "res",
+      "value": "2k"
+    }
+  ],
+  "nets": {
+    "vin": [
+      "V1.+",
+      "R1.a",
+      "Q1.C"
+    ],
+    "vb": [
+      "R1.b",
+      "D1.cathode",
+      "Q1.B"
+    ],
+    "vout": [
+      "Q1.E",
+      "RL.a"
+    ],
+    "0": [
+      "V1.-",
+      "D1.anode",
+      "RL.b"
+    ]
+  },
+  "directives": [
+    ".op"
+  ]
+}

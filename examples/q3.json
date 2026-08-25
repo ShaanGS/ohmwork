@@ -1,0 +1,193 @@
+{
+  "question": "Design and simulate a regulated 6.2 V DC power supply using LTspice. The circuit should consist of a bridge rectifier, a C-L-C smoothing filter with C = 470 µF and L = 1 mH, followed by a Zener-diode voltage regulator. The bridge rectifier is driven by a 12 V RMS, 50 Hz AC supply, and a 1 kΩ resistive load is connected at the regulated output. Obtain and observe the input AC waveform, bridge rectifier output waveform, C-L-C filter output waveform, regulated DC output waveform, and load current waveform using LTspice.",
+  "design_notes": [
+    {
+      "item": "topology",
+      "choice": "full bridge + C-L-C pi filter + shunt zener with series resistor",
+      "rationale": "the standard topology for this spec; the question names the blocks but not their interconnection or the zener's series resistor",
+      "rationale_origin": "generated"
+    }
+  ],
+  "circuit": {
+    "components": [
+      {
+        "ref": "V1",
+        "type": "voltage",
+        "ac": {
+          "kind": "sine",
+          "rms": 12,
+          "freq": 50
+        }
+      },
+      {
+        "ref": "D1",
+        "type": "diode",
+        "device": {}
+      },
+      {
+        "ref": "D2",
+        "type": "diode",
+        "device": {}
+      },
+      {
+        "ref": "D3",
+        "type": "diode",
+        "device": {}
+      },
+      {
+        "ref": "D4",
+        "type": "diode",
+        "device": {}
+      },
+      {
+        "ref": "C1",
+        "type": "cap",
+        "value": "470u"
+      },
+      {
+        "ref": "L1",
+        "type": "ind",
+        "value": "1m"
+      },
+      {
+        "ref": "C2",
+        "type": "cap",
+        "value": "470u"
+      },
+      {
+        "ref": "RS",
+        "type": "res",
+        "value": "220",
+        "origin": "designed",
+        "rationale": "drops ~9 V from the ~15.2 V filter output, setting roughly 40 mA total: ~6 mA into the 1k load leaves the zener biased well above its 5 mA knee across the ripple swing",
+        "rationale_origin": "generated"
+      },
+      {
+        "ref": "DZ",
+        "type": "zener",
+        "device": {
+          "vz": 6.2,
+          "exact": true
+        }
+      },
+      {
+        "ref": "RL",
+        "type": "res",
+        "value": "1k"
+      }
+    ],
+    "nets": {
+      "ac1": [
+        "V1.+",
+        "D1.anode",
+        "D3.cathode"
+      ],
+      "ac2": [
+        "V1.-",
+        "D2.anode",
+        "D4.cathode"
+      ],
+      "vrect": [
+        "D1.cathode",
+        "D2.cathode",
+        "C1.a",
+        "L1.a"
+      ],
+      "vfilt": [
+        "L1.b",
+        "C2.a",
+        "RS.a"
+      ],
+      "vout": [
+        "RS.b",
+        "DZ.cathode",
+        "RL.a"
+      ],
+      "0": [
+        "D3.anode",
+        "D4.anode",
+        "C1.b",
+        "C2.b",
+        "DZ.anode",
+        "RL.b"
+      ]
+    }
+  },
+  "asks": [
+    {
+      "text": "input AC waveform",
+      "answered_by": "v_in_wave"
+    },
+    {
+      "text": "bridge rectifier output waveform",
+      "answered_by": "v_rect_wave"
+    },
+    {
+      "text": "C-L-C filter output waveform",
+      "answered_by": "v_filt_wave"
+    },
+    {
+      "text": "regulated DC output waveform",
+      "answered_by": "v_out_wave"
+    },
+    {
+      "text": "load current waveform",
+      "answered_by": "i_load_wave"
+    }
+  ],
+  "analysis": {
+    "runs": [
+      {
+        "id": "waveforms",
+        "type": "tran",
+        "label": "steady-state waveforms",
+        "stop": "200m",
+        "settle": "100m",
+        "max_step": "100u"
+      }
+    ],
+    "measurements": [
+      {
+        "name": "v_in_wave",
+        "run": "waveforms",
+        "kind": "waveform_stats",
+        "expr": "V(ac1)-V(ac2)"
+      },
+      {
+        "name": "v_rect_wave",
+        "run": "waveforms",
+        "kind": "waveform_stats",
+        "expr": "V(vrect)"
+      },
+      {
+        "name": "v_filt_wave",
+        "run": "waveforms",
+        "kind": "waveform_stats",
+        "expr": "V(vfilt)"
+      },
+      {
+        "name": "v_out_wave",
+        "run": "waveforms",
+        "kind": "waveform_stats",
+        "expr": "V(vout)"
+      },
+      {
+        "name": "i_load_wave",
+        "run": "waveforms",
+        "kind": "waveform_stats",
+        "expr": "I(RL)"
+      },
+      {
+        "kind": "regime",
+        "run": "waveforms",
+        "assert": "zener_in_breakdown",
+        "device": "DZ",
+        "vz": 6.2
+      }
+    ]
+  },
+  "source": {
+    "file": "lab manual, Experiment 3 open ended question (screenshot)",
+    "extractor": "human transcription from screenshot"
+  }
+}
