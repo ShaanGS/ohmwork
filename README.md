@@ -323,6 +323,40 @@ no checks were skipped, and prints every regime assertion that HELD along
 with what it examined, because a quiet page must never be indistinguishable
 from an unexamined one.
 
+### The live service (digital only)
+
+A question typed in plain English, a Logisim circuit file and a truth table
+back:
+
+```bash
+pip install -e ".[web,llm]"
+cd web && npm install && npm run build && cd ..
+OHMWORK_PASSWORD=whatever python -m ohmwork.server
+```
+
+The whole design loop runs server-side, and **Logisim Evolution runs there
+too** -- so the table served is one an outside tool computed by evaluating the
+exact file offered for download. A design the evaluator disagrees with is
+thrown away and redone; if none survives, the answer is an error rather than a
+circuit.
+
+This rewrites a rule rather than breaking one. The old rule said *no model in
+the hot path*, on the grounds that the server could not simulate. That is
+permanently true for **analog** -- LTspice is a Windows GUI application, and
+ngspice cannot read its device libraries -- and it was simply false for
+digital. So analog is not served here at all, and the rule now reads: *no
+response may carry a circuit or a table the evaluator did not confirm, and
+every response names the evaluator that confirmed it.*
+
+The reading the loop worked from is printed above the answer, in warning
+colour, because that is the one failure none of this machinery can catch: a
+misread question produces a specification and a circuit that agree perfectly
+with each other.
+
+Deployment is one container -- `Dockerfile` and `DEPLOY.md` -- and the image is
+built and exercised by CI on every push, because it is the one artefact here
+that no test can check.
+
 ---
 
 ## What it is not

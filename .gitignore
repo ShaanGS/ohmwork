@@ -38,3 +38,8 @@ CLAUDE.md
 # manifests it came from, and would bury real library diffs under regenerated
 # HTML. Build it with:  python -m ohmwork --library library --build-site site
 site/
+
+# The frontend build. Generated from web/src; committing it would put a
+# second copy of the app in the repo, free to drift from its source.
+web/node_modules/
+web/dist/

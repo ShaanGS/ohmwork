@@ -335,8 +335,16 @@ def _attempt(circuit, question, spec, provider_name, model, backend, workdir,
 
 
 def solve(question: str, *, provider=None, backend=None, workdir,
-          attempts: int = DEFAULT_ATTEMPTS) -> Solution:
-    """Design a digital circuit for `question` and verify it against its spec."""
+          attempts: int = DEFAULT_ATTEMPTS, progress=None) -> Solution:
+    """Design a digital circuit for `question` and verify it against its spec.
+
+    `progress(name, data)` is called as the loop runs: "reading" once the
+    specification is parsed, and "attempt" as each design is tried and
+    rejected. A solve makes several model calls and several evaluator runs,
+    and a caller that can only see the final answer cannot show the reading
+    BEFORE the answer -- which is the one thing a human is here to check.
+    """
+    emit = progress or (lambda name, data: None)
     if provider is None:
         from ohmwork.llm import get_provider
         provider = get_provider()
@@ -350,6 +358,10 @@ def solve(question: str, *, provider=None, backend=None, workdir,
     spec = parse_spec_reply(
         provider.complete(SPEC_PROMPT.format(question=question),
                           max_tokens=1500).text)
+    emit("reading", {"spec": spec.render(),
+                     "inputs": list(spec.inputs),
+                     "outputs": list(spec.outputs),
+                     "notes": list(getattr(spec, "notes", ()) or ())})
 
     types = type_vocabulary()
 
@@ -361,6 +373,7 @@ def solve(question: str, *, provider=None, backend=None, workdir,
             spec=spec.render(), types=types,
             inputs=", ".join(spec.inputs), outputs=", ".join(spec.outputs),
             retry=retry)
+        emit("attempt", {"index": index, "status": "designing"})
         reply = provider.complete(prompt, max_tokens=4000)
 
         # Provenance comes from the REPLY, never from the provider object. A
@@ -389,6 +402,8 @@ def solve(question: str, *, provider=None, backend=None, workdir,
         # the fifth try. Found by probing extract.py, which burned four
         # attempts on one unchanging rejection because nothing was watching.
         history.append((index, failure))
+        emit("attempt", {"index": index, "status": "rejected",
+                         "failure": failure})
         if failure == last_error:
             raise DesignError(
                 f"the same failure came back twice, so retrying is not "

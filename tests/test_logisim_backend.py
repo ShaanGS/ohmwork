@@ -198,3 +198,41 @@ def test_internal_engine_refuses_to_pretend():
 @needs_logisim
 def test_best_available_prefers_the_external_evaluator():
     assert best_available_backend().verification == "external"
+
+
+# ------------------------------------------------- running it on a server
+#
+# The hosted digital service runs on Linux, where Logisim Evolution is an
+# all-in-one JAR rather than the Windows jpackage launcher. That is the one
+# platform difference the backend has to know about, and getting it wrong
+# means the server cannot verify anything at all -- the failure the whole
+# endpoint exists to prevent.
+
+
+def test_a_jar_is_run_through_java_and_an_exe_is_run_directly(tmp_path,
+                                                              monkeypatch):
+    from ohmwork.logisim_backend import logisim_command
+
+    monkeypatch.setenv("OHMWORK_JAVA", "/usr/bin/java")
+    jar = tmp_path / "logisim-evolution.jar"
+    jar.write_bytes(b"")
+    assert logisim_command(jar, ["--tty", "table"]) == [
+        "/usr/bin/java", "-jar", str(jar), "--tty", "table"]
+
+    exe = tmp_path / "logisim-evolution.exe"
+    exe.write_bytes(b"")
+    # The Windows launcher bundles its own Java and contains no java.exe, so
+    # it must NOT be handed to a JVM.
+    assert logisim_command(exe, ["--tty", "table"]) == [str(exe), "--tty",
+                                                        "table"]
+
+
+def test_a_jar_with_no_java_anywhere_says_so(tmp_path, monkeypatch):
+    import ohmwork.logisim_backend as backend
+
+    monkeypatch.delenv("OHMWORK_JAVA", raising=False)
+    monkeypatch.setattr(backend.shutil, "which", lambda name: None)
+    jar = tmp_path / "logisim-evolution.jar"
+    jar.write_bytes(b"")
+    with pytest.raises(FileNotFoundError, match="OHMWORK_JAVA"):
+        backend.logisim_command(jar, [])

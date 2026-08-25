@@ -18,6 +18,11 @@ dependencies = ["spicelib"]
 llm = ["groq"]
 anthropic = ["anthropic"]
 
+# The hosted digital service. Optional for the same reason: every simulation,
+# measurement and library entry works without a web server anywhere near it,
+# and the test suite skips this file's tests when fastapi is absent.
+web = ["fastapi", "uvicorn[standard]"]
+
 # Stated explicitly rather than auto-discovered. The repo root holds several
 # directories that LOOK like packages -- tests/, examples/, library/ -- and
 # setuptools rightly refuses to guess between them. Naming the one real

@@ -1,0 +1,17 @@
+# Keep the build context small and, more importantly, keep secrets and
+# generated artefacts out of an image that gets pushed to a public host.
+.env
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+web/node_modules
+web/dist
+site
+tests
+examples
+library
+circ files
+CLAUDE.md
+*.egg-info

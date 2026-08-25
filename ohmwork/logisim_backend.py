@@ -112,6 +112,29 @@ def locate_logisim() -> Path:
     )
 
 
+def logisim_command(exe, args) -> list[str]:
+    """The command line for one Logisim run.
+
+    Two shapes, because the two platforms ship it differently. Windows has
+    the jpackage launcher, which bundles its own Java 21 and has NO java.exe
+    inside it -- so it is driven directly. Linux hosting has the all-in-one
+    JAR from the release page, which needs a JVM naming it.
+
+    Deriving this from the FILE EXTENSION rather than from the platform is
+    deliberate: it is the file in hand that decides, and a Windows machine
+    with a jar should work the same way.
+    """
+    exe = Path(exe)
+    if exe.suffix.lower() == ".jar":
+        java = os.environ.get("OHMWORK_JAVA") or shutil.which("java")
+        if not java:
+            raise FileNotFoundError(
+                f"{exe.name} is a JAR and no java was found to run it. "
+                f"Install a JRE (21 or newer) or set OHMWORK_JAVA.")
+        return [java, "-jar", str(exe), *args]
+    return [str(exe), *args]
+
+
 def _match_column(wanted: str, columns: list[str]) -> str:
     """Find `wanted` among Logisim's column names, allowing for VHDL mangling.
 
@@ -210,7 +233,8 @@ class LogisimBackend:
         circ_path = Path(circ_path)
         try:
             proc = subprocess.run(
-                [str(self.exe), "--no-splash", "--tty", "table", str(circ_path)],
+                logisim_command(self.exe, ["--no-splash", "--tty", "table",
+                                           str(circ_path)]),
                 timeout=timeout, capture_output=True, text=True,
             )
         except subprocess.TimeoutExpired:
@@ -239,7 +263,8 @@ class LogisimBackend:
         not necessarily reveal.
         """
         proc = subprocess.run(
-            [str(self.exe), "--no-splash", "--tty", "stats", str(circ_path)],
+            logisim_command(self.exe, ["--no-splash", "--tty", "stats",
+                                       str(circ_path)]),
             timeout=timeout, capture_output=True, text=True,
         )
         census = {}

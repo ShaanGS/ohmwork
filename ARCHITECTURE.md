@@ -65,10 +65,32 @@ default. Semantic problems — implausible values, a 500x resistor spread, a run
 with no regime assertions — *warn*, because the human confirmation step is what
 they exist to feed.
 
-**No model in the hot path.** `llm.py` is driven only by the CLI, locally,
-where the simulators are and where a human sits at the dry-run gate. The
-operational test of the rule: *if anything in a request path ever imports
-`ohmwork/llm.py`, the rule has been broken.*
+**Never serve a number nobody checked.** This rule used to read *"no model in
+the hot path"*, with the operational test *"if anything in a request path
+imports `ohmwork/llm.py`, the rule has been broken"*. It was **rewritten, not
+dropped**, when its premise turned out to be false — and the distinction is
+worth stating precisely, because "the rule became inconvenient" and "the rule
+rested on a factual error" look identical from outside.
+
+The stated reason was: *the server CANNOT simulate, so it could only ever
+produce results labelled UNVERIFIED.* True for analog, and permanently so:
+LTspice is a Windows GUI application, and ngspice is not a substitute because
+it cannot read LTspice's device libraries. **False for digital.** Logisim
+Evolution is Java, runs on an ordinary Linux host, and is the same external
+evaluator the CLI uses.
+
+So the rule now reads: **no response may carry a circuit or a table the
+evaluator did not confirm, and every response names the evaluator that
+confirmed it.** `ohmwork/server.py` imports `llm.py` deliberately, and the
+spirit of the old rule is enforced harder rather than weaker — `design.solve`
+*raises* rather than returning a circuit Logisim disagreed with, so a failed
+solve produces an error and no download at all.
+
+Two consequences kept in code rather than in prose: the analog path is not
+served from the web endpoint at all, and the offline fallback evaluator
+(`verification: "internal"`, which computes the result *and* anything the
+result would be checked against) is labelled as such in every response that
+carries it.
 
 ---
 

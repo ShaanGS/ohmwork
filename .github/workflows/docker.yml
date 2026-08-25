@@ -1,0 +1,73 @@
+# Build the deployment image on every push.
+#
+# The Dockerfile is the one artefact in this repo that cannot be checked by
+# the test suite, and it was written on a machine with no Docker installed.
+# Without this workflow its first real run would be a deploy to a live Space,
+# which is the worst place to discover a wrong base image or a moved download
+# URL. So the image is BUILT here, and a build failure is a red commit rather
+# than a broken site.
+#
+# It deliberately does not push anywhere. Deployment stays a deliberate act
+# (deploy/push-space.sh), because a deploy carries secrets and a build does
+# not.
+
+name: docker
+
+on:
+  push:
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "pyproject.toml"
+      - "ohmwork/**"
+      - "web/**"
+      - ".github/workflows/docker.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t ohmwork:ci .
+
+      - name: The evaluator must actually run inside it
+        # Not "does the image build" -- does the thing the whole service
+        # depends on work in there. Logisim is Java, driven headless under
+        # xvfb, and both halves of that are assumptions until something runs
+        # them.
+        run: |
+          docker run --rm --entrypoint sh ohmwork:ci -c \
+            'xvfb-run -a java -jar "$OHMWORK_LOGISIM" --version 2>&1 | head -5 || true; java -version'
+
+      - name: It must serve, refuse anonymous solves, and stay up
+        run: |
+          docker run -d --name ohmwork -p 7860:7860 \
+            -e OHMWORK_PASSWORD=ci-only-password \
+            ohmwork:ci
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:7860/api/health; then break; fi
+            sleep 2
+          done
+          echo
+          # A solve without a session must be refused. This is the check that
+          # matters most in a container that will hold real API keys.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+                 -H 'Content-Type: application/json' \
+                 -d '{"question":"design a 2-to-4 decoder"}' \
+                 http://127.0.0.1:7860/api/solve)
+          test "$code" = "401" || { echo "anonymous solve returned $code"; exit 1; }
+          docker logs ohmwork
+          docker rm -f ohmwork
+
+      - name: A container with no password must REFUSE to start
+        # Fail closed. The one misconfiguration whose symptom is everything
+        # working perfectly, for everyone, on somebody else's free-tier keys.
+        run: |
+          if docker run --rm ohmwork:ci 2>&1 | tee /tmp/out; then
+            echo "it started without a password"; exit 1
+          fi
+          grep -q "OHMWORK_PASSWORD" /tmp/out

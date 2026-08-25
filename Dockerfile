@@ -1,0 +1,68 @@
+# The digital half of ohmwork, as one container.
+#
+# WHY A CONTAINER AND NOT A SERVERLESS FUNCTION. The thing that verifies an
+# answer here is Logisim Evolution, which is Java. It has to actually run on
+# the server -- a platform with no JVM, or a 60-second function limit, cannot
+# host this at all. That single fact decides the whole deployment.
+#
+# Analog stays on the command line: LTspice is a Windows GUI application, and
+# ngspice is not a substitute because it cannot read LTspice's device
+# libraries. A hosted analog answer could only ever be unverified.
+
+# ----------------------------------------------------------- the frontend
+FROM node:22-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json* ./
+RUN npm install --no-audit --no-fund
+COPY web/ ./
+RUN npm run build
+
+
+# ------------------------------------------------------------ the runtime
+FROM python:3.12-slim
+
+# Java 21, copied from the official image rather than from Debian, whose
+# stable JRE is too old for Logisim Evolution 4.x.
+COPY --from=eclipse-temurin:21-jre /opt/java/openjdk /opt/java/openjdk
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="/opt/java/openjdk/bin:${PATH}"
+
+# xvfb: Logisim is a desktop application being driven in --tty mode, and
+# giving it a virtual display is cheaper than gambling on every AWT call
+# being headless-safe. Measured cost: a few MB and no measurable latency.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends xvfb curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# PINNED. This is the evaluator every published number in this project was
+# measured against; a floating "latest" would silently change what "verified"
+# means between deploys.
+ARG LOGISIM_VERSION=4.1.0
+RUN curl -fsSL -o /opt/logisim-evolution.jar \
+    "https://github.com/logisim-evolution/logisim-evolution/releases/download/v${LOGISIM_VERSION}/logisim-evolution-${LOGISIM_VERSION}-all.jar"
+ENV OHMWORK_LOGISIM=/opt/logisim-evolution.jar
+
+WORKDIR /app
+COPY pyproject.toml ./
+COPY ohmwork ./ohmwork
+RUN pip install --no-cache-dir ".[web,llm]"
+
+COPY --from=web /web/dist ./web/dist
+
+# HOME must be writable: Logisim writes a preferences file on first run, and
+# a read-only home turns that into a startup failure with an unrelated-looking
+# message.
+ENV HOME=/tmp \
+    PORT=7860 \
+    OHMWORK_SECURE_COOKIES=1 \
+    OHMWORK_LLM=pool \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 7860
+
+# A quick liveness probe. It says nothing about configuration on purpose --
+# it is the one route reachable without the password.
+HEALTHCHECK --interval=60s --timeout=5s --start-period=20s \
+  CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:7860/api/health').read()"
+
+CMD ["xvfb-run", "-a", "python", "-m", "ohmwork.server"]
