@@ -61,6 +61,33 @@ def _make_stdout_unicode_safe() -> None:
             pass
 
 
+def _build_site(args, parser) -> int:
+    """Render the library into static HTML.
+
+    Separate from the generate path on purpose. Generating requires a
+    simulator and a human at the dry-run gate; publishing the result requires
+    neither, and keeping them apart is what makes it obvious that the site
+    cannot produce a number of its own.
+    """
+    from .viewer import ViewerError, build_site
+
+    if not args.library:
+        parser.error("--build-site needs --library DIR to render from")
+    try:
+        written = build_site(args.library, args.build_site)
+    except ViewerError as exc:
+        print(f"cannot publish: {exc}", file=sys.stderr)
+        return 1
+
+    out = Path(args.build_site)
+    print(f"wrote {len(written)} files to {out}")
+    print(f"    open {out / 'index.html'}")
+    print("The site is a VIEWER. It renders manifests that were produced and "
+          "reviewed locally; it cannot simulate, and a question that is not "
+          "in the library shows as not solved yet.")
+    return 0
+
+
 def main(argv=None) -> int:
     _make_stdout_unicode_safe()
     parser = argparse.ArgumentParser(prog="ohmwork")
@@ -116,10 +143,17 @@ def main(argv=None) -> int:
                         help="date recorded in the manifest (default: today). "
                              "Passed in so regenerating an unchanged question "
                              "produces an identical file")
+    parser.add_argument("--build-site", metavar="DIR",
+                        help="render --library into a folder of static HTML "
+                             "at DIR and exit. No question file is needed: "
+                             "the site is a viewer over what is already "
+                             "published, and it never simulates anything")
     args = parser.parse_args(argv)
 
     if args.list_models:
         return _list_models(args)
+    if args.build_site:
+        return _build_site(args, parser)
     if args.extract:
         if args.llm:
             os.environ["OHMWORK_LLM"] = args.llm

@@ -1,0 +1,63 @@
+# Publish the library as a static site.
+#
+# This workflow needs NO simulator, and that is the whole architecture showing
+# up in a CI file. Every number was produced locally by LTspice or Logisim
+# Evolution and reviewed by a human at the dry-run gate; `--build-site` only
+# renders the manifests that came out of that. If this job could compute a
+# result, something would have gone badly wrong.
+#
+# The build refuses rather than degrades: an invalid manifest, a missing
+# deliverable, a download whose bytes no longer match the published sha256, or
+# an index that lists questions the library does not hold all fail the job.
+# A broken library does not get published quietly.
+#
+# Requires Pages to be enabled for the repository with "GitHub Actions" as the
+# source (Settings -> Pages). Until then this job builds and uploads, and the
+# deploy step is what will fail.
+name: pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "library/**"
+      - "ohmwork/viewer.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; never cancel one in progress half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e .
+      - name: Render the library
+        run: python -m ohmwork --library library --build-site site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

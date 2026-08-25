@@ -32,3 +32,9 @@ __pycache__/
 # ARCHITECTURE.md, which IS committed. Excluded from the FIRST commit rather
 # than removed later, because history is forever.
 CLAUDE.md
+
+# The rendered site is GENERATED from library/. Committing it would put a
+# second copy of every published number in the repo, free to drift from the
+# manifests it came from, and would bury real library diffs under regenerated
+# HTML. Build it with:  python -m ohmwork --library library --build-site site
+site/

@@ -299,6 +299,30 @@ no component's geometry may be added to this repo without being measured from
 a real file containing it. Padding the count with an invented question would
 be worse than a short list.
 
+### The site
+
+The viewer renders the library into plain static HTML — no backend, no
+database, no JavaScript, nothing fetched from the network:
+
+```bash
+python -m ohmwork --library library --build-site site
+```
+
+It needs no simulator, because it computes nothing. **The viewer adds no
+facts:** every claim on a page comes from a manifest field. It does not round
+a number, does not infer a verification status from a backend name, and does
+not decide a result looks fine. Each question's `manifest.json` and
+`question.json` are copied in beside the page, so the rendering is auditable
+against the record it was rendered from without running any of this code.
+
+It refuses rather than degrades. An invalid manifest, a missing deliverable,
+a download whose bytes no longer match the published sha256, or an index
+listing questions the library does not hold — each stops the build. And the
+project's oldest rule reaches an audience here: a page states in words that
+no checks were skipped, and prints every regime assertion that HELD along
+with what it examined, because a quiet page must never be indistinguishable
+from an unexamined one.
+
 ---
 
 ## What it is not
