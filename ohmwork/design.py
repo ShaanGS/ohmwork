@@ -38,7 +38,7 @@ from pathlib import Path
 
 from ohmwork.domain import (ANALOG_ADVICE, DomainError, check_digital,
                             check_spec_has_logic, named_parts)
-from ohmwork.llm import LLMError
+from ohmwork.llm import LLMError, PoolExhausted
 from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.spec import Spec, SpecError, compare_tables, evaluate_spec
 
@@ -469,6 +469,11 @@ def _ask_until_it_fits(provider, prompt, budget, parse, what):
         try:
             reply = provider.complete(prompt, max_tokens=budget,
                                       json_object=True)
+        except PoolExhausted:
+            # Nobody could be asked. The question was never wrong and no
+            # circuit was ever designed; wrapping this as a design failure
+            # would tell someone to rewrite a question that was fine.
+            raise
         except LLMError as exc:
             raise DesignError(f"the model could not be reached: {exc}") from exc
         try:

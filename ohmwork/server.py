@@ -54,6 +54,7 @@ from fastapi import Cookie, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from ohmwork.domain import DomainError, check_digital
+from ohmwork.llm import PoolExhausted
 
 #: How long a login lasts. Long enough that five people are not typing a
 #: passphrase all day; short enough that a borrowed laptop is not forever.
@@ -277,6 +278,14 @@ def create_app(*, solver=None, password: str | None = None,
                 # not a guarantee.
                 _backfill(solution, seen, progress)
                 progress("verified", _verified_payload(solution, downloads))
+            except PoolExhausted as exc:
+                # Not a failure of the design and not a refusal of the
+                # question: there was nobody to ask. A third outcome, and it
+                # gets its own event so the page can say so.
+                progress("unavailable", {"message": f"{exc}",
+                                         "members": exc.members,
+                                         "download": None})
+                shutil.rmtree(workdir, ignore_errors=True)
             except DomainError as exc:
                 # A REFUSAL, not a failure, and rendered as a different thing.
                 # "the loop tried and could not" and "the loop should never

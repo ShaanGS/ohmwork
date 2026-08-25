@@ -260,6 +260,34 @@ def test_an_analog_question_is_REFUSED_and_never_reaches_the_solver():
     assert stream["refused"]["download"] is None
 
 
+def test_every_provider_being_out_of_capacity_is_NOT_reported_as_a_bad_design():
+    """Three outcomes, not two.
+
+    "no verified circuit" in red says YOUR CIRCUIT FAILED. When every free
+    tier is spent, no circuit was ever designed and nothing about the
+    question was wrong -- there was nobody to ask. Collapsing the two sends
+    someone off to rewrite a question that was fine.
+    """
+    from ohmwork.llm import PoolExhausted
+
+    def solver(question, *, workdir, progress=None):
+        raise PoolExhausted(
+            "none of the 2 model provider(s) could answer right now.",
+            members=[("groq", "busy or rate limited right now"),
+                     ("gemini", "free quota for today is spent; it resets "
+                                "tomorrow")])
+
+    client = make_client(solver)
+    login(client)
+    stream = dict(events(solve(client)))
+
+    assert "error" not in stream
+    assert "verified" not in stream
+    assert stream["unavailable"]["download"] is None
+    members = dict(stream["unavailable"]["members"])
+    assert "resets tomorrow" in members["gemini"]
+
+
 def test_an_empty_question_is_refused_before_a_single_model_call():
     calls = []
 

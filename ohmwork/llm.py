@@ -466,6 +466,22 @@ TRANSIENT_COOLDOWN = 10.0
 HTTP_TIMEOUT = 120
 
 
+class PoolExhausted(LLMError):
+    """Every member was tried and none could answer.
+
+    Its own class because it is a different FACT from "the design failed".
+    The circuit was never designed, nothing was evaluated, and nothing about
+    the question was wrong -- there was simply nobody to ask. Reporting that
+    as a failed solve tells someone to rewrite a question that was fine.
+    """
+
+    def __init__(self, message, members=()):
+        super().__init__(message)
+        #: [(member name, plain-English reason)], for a caller that renders
+        #: this rather than printing it.
+        self.members = list(members)
+
+
 class RateLimited(LLMError):
     """The provider asked us to slow down, and said for how long.
 
@@ -873,6 +889,27 @@ class Pool:
         self.incidents.append(Incident(name, reason, rate_limited))
         del self.incidents[:-50]
 
+    @staticmethod
+    def _plain(reason: str) -> str:
+        """A provider's error, in words a person can act on.
+
+        The raw text is a JSON blob with a billing URL in it. Useful in a
+        log, useless on a page: what a reader needs is whether to wait, to
+        add a key, or to stop.
+        """
+        lowered = reason.lower()
+        if "daily" in lowered:
+            return "free quota for today is spent; it resets tomorrow"
+        if "payment" in lowered or "402" in lowered:
+            return "that account needs billing enabled; it is not free"
+        if "cannot fit this request" in lowered:
+            return "this request is larger than its per-minute cap allows"
+        if "empty completion" in lowered:
+            return "answered with nothing usable"
+        if "rate limit" in lowered or "temporarily unavailable" in lowered:
+            return "busy or rate limited right now"
+        return reason.split(chr(10))[0][:120]
+
     def _exhausted(self, failures, extra: str = "") -> LLMError:
         """Every member's failure, verbatim.
 
@@ -880,10 +917,17 @@ class Pool:
         be tried last for a problem that might belong to all of them — an
         expired key and a stale model id look identical from there.
         """
-        detail = "\n".join(f"  {name}: {reason}" for name, reason in failures)
-        return LLMError(
-            f"no pool member could answer ({len(self.members)} member(s) "
-            f"tried).\n{detail}" + (f"\n{extra}" if extra else ""))
+        # One line per MEMBER, not one per attempt: a member retried twelve
+        # times produced twelve identical lines, which buried the members
+        # that failed for a reason worth reading.
+        seen: dict[str, str] = {}
+        for name, reason in failures:
+            seen.setdefault(name, self._plain(reason))
+        detail = "\n".join(f"  {name}: {reason}" for name, reason in seen.items())
+        return PoolExhausted(
+            f"none of the {len(self.members)} model provider(s) could answer "
+            f"right now.\n{detail}" + (f"\n{extra}" if extra else ""),
+            members=list(seen.items()))
 
 
 def planned_pool(names=None):

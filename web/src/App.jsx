@@ -135,12 +135,13 @@ function Solver({ onExpired }) {
   const [attempts, setAttempts] = useState([])
   const [verified, setVerified] = useState(null)
   const [refused, setRefused] = useState(null)
+  const [unavailable, setUnavailable] = useState(null)
   const [error, setError] = useState(null)
   const bottom = useRef(null)
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [asked, reading, attempts, verified, refused, error])
+  }, [asked, reading, attempts, verified, refused, unavailable, error])
 
   async function run() {
     const text = question.trim()
@@ -152,6 +153,7 @@ function Solver({ onExpired }) {
     setAttempts([])
     setVerified(null)
     setRefused(null)
+    setUnavailable(null)
     setError(null)
 
     let response
@@ -182,6 +184,7 @@ function Solver({ onExpired }) {
         ].sort((a, b) => a.index - b.index))
       } else if (name === 'verified') setVerified(data)
       else if (name === 'refused') setRefused(data)
+      else if (name === 'unavailable') setUnavailable(data)
       else if (name === 'error') setError(data)
     }
     setRunning(false)
@@ -202,6 +205,7 @@ function Solver({ onExpired }) {
 
           {asked && <Asked text={asked} />}
           {refused && <Refused refused={refused} />}
+          {unavailable && <Unavailable info={unavailable} />}
           {reading && <Reading reading={reading} />}
 
           {attempts.map((attempt) => (
@@ -210,7 +214,7 @@ function Solver({ onExpired }) {
 
           {verified && <Verified verified={verified} />}
           {error && <Failed error={error} />}
-          {running && !verified && !error && !refused && <Working />}
+          {running && !verified && !error && !refused && !unavailable && <Working />}
           <div ref={bottom} />
         </div>
       </main>
@@ -443,6 +447,44 @@ function Refused({ refused }) {
     </Card>
   )
 }
+
+function Unavailable({ info }) {
+  // A THIRD outcome, and it needs to look like neither of the others. "no
+  // verified circuit" in red says the circuit failed; this says nobody could
+  // be asked, which is not a fact about the question at all.
+  return (
+    <Card className="animate-in fade-in slide-in-from-bottom-2">
+      <CardContent className="space-y-3">
+        <p className="flex items-center gap-2 text-sm">
+          <CircleAlert className="size-4 text-muted-foreground" />
+          every model provider is busy
+        </p>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Nothing was designed and nothing was wrong with your question —
+          there was simply nobody to ask. These are free accounts, and free
+          accounts run out.
+        </p>
+        <div className="rounded-lg border bg-background/50 p-3">
+          <dl className="space-y-1 text-xs">
+            {(info.members || []).map(([name, reason]) => (
+              <div key={name} className="flex gap-2">
+                <dt className="w-24 shrink-0 font-mono text-muted-foreground">
+                  {name}
+                </dt>
+                <dd>{reason}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Try again in a few minutes, or add another provider key. Nothing
+          about the question needs changing.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
 
 function Failed({ error }) {
   return (
