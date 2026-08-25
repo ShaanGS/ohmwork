@@ -16,7 +16,7 @@
 # TO REHEARSE THIS LOCALLY ON WINDOWS, clear all THREE things a Linux runner
 # lacks -- the third one cost a red first build:
 #
-#   env -u LOCALAPPDATA OHMWORK_LTSPICE=/x OHMWORK_LOGISIM=/x #       OHMWORK_LTSPICE_LIB=/x python -m pytest -q -rs
+#   env -u LOCALAPPDATA OHMWORK_LTSPICE=/x OHMWORK_LOGISIM=/x OHMWORK_LTSPICE_LIB=/x python -m pytest -q -rs
 #
 # Overriding the two executable variables is NOT enough. LTspice's component
 # libraries are found under %LOCALAPPDATA% regardless of them, so a rehearsal
