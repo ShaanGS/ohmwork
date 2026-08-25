@@ -38,6 +38,7 @@ from pathlib import Path
 
 from ohmwork.domain import (ANALOG_ADVICE, DomainError, check_digital,
                             check_spec_has_logic, named_parts)
+from ohmwork.llm import LLMError
 from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.spec import Spec, SpecError, compare_tables, evaluate_spec
 
@@ -60,10 +61,27 @@ SPEC_MAX_TOKENS = 6000
 #: max_tokens, so asking for 8000 plus a prompt is a request that can never
 #: fit, and the answer is HTTP 413 rather than a slow one.
 #:
-#: So this is not a "bigger is safer" number. It is the largest budget that
-#: still fits the smallest free tier in the pool, and the real fix is a
-#: provider whose per-minute cap is not 8000.
+#: So this is not a "bigger is safer" number: it is a STARTING budget, small
+#: enough that the smallest free tier in the pool can still take the job. If
+#: a reply comes back cut off, the loop asks again with double the room --
+#: and a member whose per-minute cap cannot fit the larger request refuses
+#: with 413, which the pool reads as "not this one" and moves on. The budget
+#: is therefore set by the job, and which provider can do the job sorts
+#: itself out.
 DESIGN_MAX_TOKENS = 5000
+
+#: Where doubling stops. Past this the reply is not big, it is looping.
+DESIGN_MAX_TOKENS_CEILING = 20000
+
+
+class TruncatedReply(Exception):
+    """The model was still writing when its token budget ran out.
+
+    Its own class because it is the one failure with a mechanical remedy: ask
+    again with more room. Feeding "your JSON is malformed" back to a model
+    whose JSON was fine until it was cut off spends a retry teaching it
+    nothing.
+    """
 
 
 class DesignError(Exception):
@@ -199,7 +217,7 @@ def _json_object(text: str, what: str) -> dict:
         # JSON object, and the reader goes looking for a formatting problem
         # that is not there. MEASURED on the seven-segment question, whose
         # spec is seven long sum-of-products expressions.
-        raise DesignError(
+        raise TruncatedReply(
             f"{what}: the reply was CUT OFF mid-object -- it started a JSON "
             f"object and never closed it, which almost always means the "
             f"token budget ran out before the answer finished. It got as far "
@@ -211,9 +229,26 @@ def _json_object(text: str, what: str) -> dict:
     try:
         data = json.loads(text[start:end + 1])
     except json.JSONDecodeError as exc:
+        # Show the text AROUND the failure, not the first 300 characters of a
+        # reply whose problem is at character 458. This message is fed back
+        # to the model that wrote it, so it has to point at the mistake --
+        # and a person reading it needs the same thing.
+        body = text[start:end + 1]
+        # An error at the very end of the text is a reply that stopped, not a
+        # reply that is wrong. The outer object never closed; rfind found the
+        # closing brace of some INNER object and everything after it is
+        # missing.
+        if exc.pos >= len(body) - 2:
+            raise TruncatedReply(
+                f"{what}: the reply stopped mid-object -- the token budget "
+                f"ran out before it finished. It got as far as: "
+                f"...{body[-140:]}") from exc
+        here = max(0, exc.pos - 120)
         raise DesignError(
-            f"{what}: the reply is not valid JSON ({exc}). It said: "
-            f"{text.strip()[:300]!r}") from exc
+            f"{what}: the reply is not valid JSON ({exc}). The problem is "
+            f"where >>><<< is:" + chr(10)
+            + f"{body[here:exc.pos]}>>><<<{body[exc.pos:exc.pos + 120]}"
+        ) from exc
     if not isinstance(data, dict):
         raise DesignError(f"{what}: expected a JSON object, got {type(data).__name__}")
     return data
@@ -423,6 +458,30 @@ def _attempt(circuit, question, spec, provider_name, model, backend, workdir,
     return data, circ_path, table, comparison
 
 
+def _ask_until_it_fits(provider, prompt, budget, parse, what):
+    """Ask, and if the answer was cut off, ask again with more room.
+
+    The one failure with a mechanical remedy, in the one place both callers
+    can share. Feeding "your JSON is malformed" back to a model whose JSON
+    was fine until the budget ran out spends a retry teaching it nothing.
+    """
+    while True:
+        try:
+            reply = provider.complete(prompt, max_tokens=budget,
+                                      json_object=True)
+        except LLMError as exc:
+            raise DesignError(f"the model could not be reached: {exc}") from exc
+        try:
+            return parse(reply.text)
+        except TruncatedReply as exc:
+            grown = min(budget * 2, DESIGN_MAX_TOKENS_CEILING)
+            if grown == budget:
+                raise DesignError(
+                    f"{what} does not fit in {budget} tokens, which is the "
+                    f"ceiling. {exc}") from exc
+            budget = grown
+
+
 def solve(question: str, *, provider=None, backend=None, workdir,
           attempts: int = DEFAULT_ATTEMPTS, progress=None) -> Solution:
     """Design a digital circuit for `question` and verify it against its spec.
@@ -449,9 +508,9 @@ def solve(question: str, *, provider=None, backend=None, workdir,
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
 
-    spec = parse_spec_reply(
-        provider.complete(SPEC_PROMPT.format(question=question),
-                          max_tokens=SPEC_MAX_TOKENS).text)
+    spec = _ask_until_it_fits(
+        provider, SPEC_PROMPT.format(question=question),
+        SPEC_MAX_TOKENS, parse_spec_reply, "the specification")
     # LAYER 3: a spec with no logic in it verifies perfectly and means
     # nothing. Checked BEFORE the reading is emitted, so a refused question
     # never renders a reading that looks like the start of an answer.
@@ -473,6 +532,7 @@ def solve(question: str, *, provider=None, backend=None, workdir,
 
     last_error = None
     history: list = []
+    budget = DESIGN_MAX_TOKENS
     for index in range(1, attempts + 1):
         retry = "" if last_error is None else RETRY_BLOCK.format(error=last_error)
         prompt = DESIGN_PROMPT.format(
@@ -480,7 +540,13 @@ def solve(question: str, *, provider=None, backend=None, workdir,
             inputs=", ".join(spec.inputs), outputs=", ".join(spec.outputs),
             retry=retry)
         emit("attempt", {"index": index, "status": "designing"})
-        reply = provider.complete(prompt, max_tokens=DESIGN_MAX_TOKENS)
+        try:
+            reply = provider.complete(prompt, max_tokens=budget,
+                                      json_object=True)
+        except LLMError as exc:
+            # A provider failure is not a design failure. It must not be fed
+            # back to the model as though its circuit were wrong.
+            raise DesignError(f"the model could not be reached: {exc}") from exc
 
         # Provenance comes from the REPLY, never from the provider object. A
         # pool is a provider whose name is "pool" and whose model is a
@@ -492,6 +558,23 @@ def solve(question: str, *, provider=None, backend=None, workdir,
             data, circ_path, table, comparison = _attempt(
                 circuit, question, spec, reply.provider, reply.model,
                 backend, workdir, index)
+        except TruncatedReply as exc:
+            # Not the model's mistake: it was still writing. Ask again with
+            # more room, and say so -- a retry that changes nothing about the
+            # request is the thing `failure == last_error` exists to stop.
+            grown = min(budget * 2, DESIGN_MAX_TOKENS_CEILING)
+            failure = (f"{exc}" if grown == budget else
+                       f"the reply ran out of room at {budget} tokens; "
+                       f"retrying with {grown}")
+            history.append((index, failure))
+            emit("attempt", {"index": index, "status": "rejected",
+                             "failure": failure})
+            if grown == budget:
+                raise DesignError(
+                    f"the design does not fit in {budget} tokens, which is "
+                    f"the ceiling. {exc}") from exc
+            budget = grown
+            continue
         except DesignError as exc:
             failure = str(exc)
         else:

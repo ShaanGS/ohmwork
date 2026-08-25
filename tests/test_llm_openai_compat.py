@@ -139,6 +139,42 @@ def test_a_429_with_nothing_to_read_falls_back_to_a_stated_default():
     assert caught.value.retry_after == llm.DEFAULT_COOLDOWN
 
 
+def test_a_DAILY_quota_is_not_treated_as_a_rate_limit():
+    """Measured on Google's free tier: HTTP 429, a retryDelay of 39 seconds,
+    and a quota of TWENTY REQUESTS PER DAY. Wait the 39 seconds and it fails
+    identically -- the pool would spend its whole budget on a member that
+    cannot serve anyone again until tomorrow."""
+    body = json.dumps({"error": {"code": 429, "details": [
+        {"@type": "type.googleapis.com/google.rpc.QuotaFailure",
+         "violations": [{"quotaId":
+                         "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                         "quotaValue": "20"}]},
+        {"@type": "type.googleapis.com/google.rpc.RetryInfo",
+         "retryDelay": "39s"}]}})
+    transport = FakeTransport((429, {}, body))
+    provider = make("gemini", transport)
+
+    with pytest.raises(llm.LLMError) as caught:
+        provider.complete("hi")
+
+    assert not isinstance(caught.value, llm.RateLimited)
+    assert "DAILY" in str(caught.value)
+
+
+def test_a_5xx_is_transient_and_the_member_is_only_briefly_set_aside():
+    """Gemini answered "currently experiencing high demand ... usually
+    temporary" with a 503. Treating that as a broken member retires one that
+    would have answered a few seconds later."""
+    transport = FakeTransport((503, {}, "high demand, try again later"))
+    provider = make("gemini", transport)
+
+    with pytest.raises(llm.RateLimited) as caught:
+        provider.complete("hi")
+
+    assert caught.value.retry_after == llm.TRANSIENT_COOLDOWN
+    assert llm.TRANSIENT_COOLDOWN < llm.DEFAULT_COOLDOWN
+
+
 def test_an_ordinary_failure_is_NOT_a_rate_limit():
     transport = FakeTransport((401, {}, "invalid api key"))
     provider = make(transport=transport)

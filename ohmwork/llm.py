@@ -247,7 +247,7 @@ class GroqProvider:
             raise LLMError(f"could not list Groq models: {e}") from None
 
     def complete(self, prompt: str, *, images=(), max_tokens: int = 4000,
-                 temperature: float = 0.2) -> Reply:
+                 temperature: float = 0.2, json_object: bool = False) -> Reply:
         if images:
             content = [{"type": "text", "text": prompt}]
             content += [{"type": "image_url",
@@ -257,11 +257,14 @@ class GroqProvider:
             content = prompt
 
         try:
+            extra = ({"response_format": {"type": "json_object"}}
+                     if json_object else {})
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": content}],
                 max_completion_tokens=max_tokens,
                 temperature=temperature,
+                **extra,
             )
         except Exception as e:                          # noqa: BLE001
             raise self._explain(e) from None
@@ -362,7 +365,10 @@ class AnthropicProvider:
             raise LLMError(f"could not list Anthropic models: {e}") from None
 
     def complete(self, prompt: str, *, images=(), max_tokens: int = 4000,
-                 temperature: float = 0.2) -> Reply:
+                 temperature: float = 0.2, json_object: bool = False) -> Reply:
+        # json_object is accepted and ignored: this API has no equivalent
+        # switch, and refusing the call would take a working provider out of
+        # the pool over a preference rather than a requirement.
         content = [{"type": "image",
                     "source": {"type": "base64",
                                "media_type": image.media_type,
@@ -427,7 +433,12 @@ ENV_VAR = {"gemini": "GEMINI_API_KEY"}
 # is the failure `--list-models` exists for, and it took one command.
 DEFAULT_MODEL.update({
     "cerebras": "gpt-oss-120b",
-    "gemini": "gemini-2.5-flash",
+    # gemini-2.5-flash is closed to NEW accounts -- an id can rot without
+    # disappearing, and it still works for whoever had it first. Exactly the
+    # rot this module is built to expect. gemini-3.6-flash, the id Google's
+    # own error suggested, then turned out to allow TWENTY requests a day on
+    # the free tier. The -latest alias carries its own, larger quota.
+    "gemini": "gemini-flash-latest",
     "openrouter": "z-ai/glm-5.2:free",
     "mistral": "mistral-large-latest",
 })
@@ -438,13 +449,19 @@ DEFAULT_MODEL.update({
 # an image request rather than handed a job they cannot do. Gemini is the
 # first free tier in this project that can read a photographed page.
 DEFAULT_VISION_MODEL.update({
-    "gemini": "gemini-2.5-flash",
+    "gemini": "gemini-flash-latest",
     "openrouter": "meta-llama/llama-3.2-11b-vision-instruct:free",
 })
 
 #: How long a member sits out when the provider did not say. A guess, and
 #: named as one so nothing reads it as measured.
 DEFAULT_COOLDOWN = 60.0
+
+#: How long to sit out a 5xx. Short on purpose: the provider said the
+#: condition is temporary, and the cost of asking again too soon is one
+#: wasted call, while the cost of waiting a full minute is a member the pool
+#: could have used.
+TRANSIENT_COOLDOWN = 10.0
 
 HTTP_TIMEOUT = 120
 
@@ -586,7 +603,7 @@ class OpenAICompatibleProvider:
                            f"{type(e).__name__}: {e}") from None
 
     def complete(self, prompt: str, *, images=(), max_tokens: int = 4000,
-                 temperature: float = 0.2) -> Reply:
+                 temperature: float = 0.2, json_object: bool = False) -> Reply:
         import json
 
         if images:
@@ -601,6 +618,13 @@ class OpenAICompatibleProvider:
                    "messages": [{"role": "user", "content": content}],
                    "max_tokens": max_tokens,
                    "temperature": temperature}
+        if json_object:
+            # Asked at the API, not pleaded for in the prompt. "Return ONE
+            # JSON object and nothing else" is an instruction a model may
+            # follow; response_format is a constraint it cannot break. Found
+            # necessary when a model answered the design step with a bulleted
+            # prose description of the nets.
+            payload["response_format"] = {"type": "json_object"}
         status, headers, text = self.transport(
             "POST", f"{self.base_url}/chat/completions", self._headers(),
             json.dumps(payload).encode("utf-8"))
@@ -637,14 +661,38 @@ class OpenAICompatibleProvider:
                 f"Waiting will not help; a provider with a larger cap will. "
                 f"{text[:200]}")
         if status == 429:
+            # A DAILY quota is not a rate limit, whatever status code carries
+            # it. Google returns 429 with a retryDelay of 39 seconds against
+            # a quota of twenty requests PER DAY: wait the 39 seconds and it
+            # fails identically, having spent the pool's whole budget on a
+            # member that cannot serve anyone again until tomorrow.
+            if "perday" in text.lower().replace("-", "").replace("_", ""):
+                return LLMError(
+                    f"{self.name}/{self.model} has spent its DAILY free quota "
+                    f"-- not a rate limit, and waiting will not clear it "
+                    f"today. Use a different model or provider. {text[:200]}")
             return RateLimited(f"{self.name} is rate limiting: {text[:200]}",
                                retry_after=_retry_after(headers, text))
+
+        # A 5xx is the provider having a bad moment, not a broken member.
+        # "This model is currently experiencing high demand ... usually
+        # temporary" is an invitation to come back shortly, and treating it
+        # as a permanent fault retires a member that would have answered.
+        if status >= 500:
+            return RateLimited(
+                f"{self.name} is temporarily unavailable (HTTP {status}): "
+                f"{text[:160]}", retry_after=TRANSIENT_COOLDOWN)
 
         lowered = text.lower()
         stale_model = status in (400, 404) and "model" in lowered and any(
             phrase in lowered for phrase in
             ("not found", "does not exist", "decommission", "invalid model",
-             "unknown model"))
+             "unknown model",
+             # Gemini's wording for an id that still works for older
+             # accounts but is closed to new ones. An id can rot WITHOUT
+             # disappearing, and a check that only looks for "not found"
+             # misses that entirely.
+             "no longer available"))
         if not stale_model:
             return LLMError(f"{self.name} request failed: HTTP {status}: "
                             f"{text[:300]}")
@@ -715,7 +763,7 @@ class Pool:
     name = "pool"
 
     def __init__(self, providers, *, clock=None, sleep=None,
-                 max_wait: float = 180.0,
+                 max_wait: float | None = None, max_tries_each: int = 4,
                  default_cooldown: float = DEFAULT_COOLDOWN, skipped=()):
         import time as _time
 
@@ -727,7 +775,13 @@ class Pool:
         self.members = [_Member(p) for p in providers]
         self.clock = clock or _time.monotonic
         self.sleep = sleep or _time.sleep
+        # A terminal can afford to wait out a free tier; a web request
+        # cannot. Configuration rather than a constant, because the right
+        # answer differs by caller and the caller knows which it is.
+        if max_wait is None:
+            max_wait = float(os.environ.get("OHMWORK_LLM_MAX_WAIT", "180"))
         self.max_wait = max_wait
+        self.max_tries_each = max_tries_each
         self.default_cooldown = default_cooldown
         #: Members that could not be built at all — no key, no vision model.
         #: Recorded rather than dropped: a pool answering from two of four
@@ -763,18 +817,26 @@ class Pool:
         return out
 
     def complete(self, prompt: str, *, images=(), max_tokens: int = 4000,
-                 temperature: float = 0.2) -> Reply:
+                 temperature: float = 0.2, json_object: bool = False) -> Reply:
         failures: list[tuple[str, str]] = []
         waited = 0.0
+        tries: dict[str, int] = {}
 
         while True:
             for member in self.members:
                 if member.until > self.clock():
                     continue
+                # A member on a five-second cooldown can be retried thirty
+                # times inside one call and consume the whole wait budget on
+                # its own, starving members that were merely slower. Measured
+                # on a free OpenRouter model.
+                if tries.get(member.name, 0) >= self.max_tries_each:
+                    continue
+                tries[member.name] = tries.get(member.name, 0) + 1
                 try:
                     return member.provider.complete(
                         prompt, images=images, max_tokens=max_tokens,
-                        temperature=temperature)
+                        temperature=temperature, json_object=json_object)
                 except RateLimited as e:
                     member.until = self.clock() + e.retry_after
                     member.waitable = True
@@ -789,15 +851,21 @@ class Pool:
 
             # Nothing answered. Waiting is only worth doing for a member that
             # told us when it would serve us again.
-            wakeable = [m.until for m in self.members if m.waitable]
+            wakeable = [m.until for m in self.members if m.waitable
+                        and tries.get(m.name, 0) < self.max_tries_each]
             if not wakeable:
                 raise self._exhausted(failures)
             pause = max(0.0, min(wakeable) - self.clock())
             if waited + pause > self.max_wait:
+                # Say which it was. "wakes in 5s, past the 180s budget" reads
+                # as arithmetic nobody can follow; the truth is that the
+                # budget was already spent waiting for earlier attempts.
+                spent = "already spent" if waited >= self.max_wait else                         f"down to {self.max_wait - waited:g}s"
                 raise self._exhausted(
                     failures,
-                    extra=f"The earliest member wakes in {pause:g}s, which is "
-                          f"past the {self.max_wait:g}s wait budget.")
+                    extra=f"The earliest member wakes in {pause:g}s, and the "
+                          f"{self.max_wait:g}s wait budget is {spent} "
+                          f"({waited:g}s waited so far).")
             self.sleep(pause)
             waited += pause
 
@@ -895,9 +963,14 @@ def get_provider(name: str | None = None, *, model: str | None = None,
                 or DEFAULT_VISION_MODEL[key]
         return PROVIDERS[key](model=model)
     if key in BASE_URL:
+        # OHMWORK_LLM_MODEL names a model on ONE provider's catalogue: the
+        # one OHMWORK_LLM selects. Asking for a DIFFERENT provider explicitly
+        # -- `--llm gemini` over a .env holding a Groq id -- must not inherit
+        # it, or every such request 404s on a setting that was never wrong.
+        chosen = (name or "").lower() == key or             (os.environ.get("OHMWORK_LLM") or DEFAULT_PROVIDER).lower() == key
+        override = os.environ.get("OHMWORK_LLM_MODEL") if chosen else None
         return OpenAICompatibleProvider(
-            key, model=model or os.environ.get("OHMWORK_LLM_MODEL")
-            or model_for(key, vision=vision))
+            key, model=model or override or model_for(key, vision=vision))
     raise LLMError(
         f"unknown provider {key!r}. Set OHMWORK_LLM to one of: "
         f"{', '.join(sorted(set(PROVIDERS) | set(BASE_URL)))}, or 'pool' to "

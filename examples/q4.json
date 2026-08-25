@@ -1,0 +1,72 @@
+{
+  "question": "Using Logisim Evolution, design a BCD-to-seven-segment display circuit using the 7447-decoder IC. Connect the decoder outputs to a seven-segment display and test all 16 possible 4-bit input combinations. Record the segment pattern displayed for each input and identify which codes correspond to valid BCD digits (0-9) and which correspond to invalid BCD codes (10-15). Caution: The 7447 decoder has active-low segment outputs; therefore, a logic 0 turns a segment ON, while a logic 1 turns it OFF. Account for this active-low operation while wiring the circuit and interpreting the segment patterns",
+  "target": "logisim",
+  "source": {
+    "file": "lab manual, Experiment 9.7 open ended question (screenshot)",
+    "extractor": "human transcription from the screenshot",
+    "question_chars": 703
+  },
+  "circuit": {
+    "components": [
+      {"ref": "D", "type": "input_pin", "label": "D"},
+      {"ref": "C", "type": "input_pin", "label": "C"},
+      {"ref": "B", "type": "input_pin", "label": "B"},
+      {"ref": "A", "type": "input_pin", "label": "A"},
+      {"ref": "EN", "type": "input_pin", "label": "EN"},
+      {"ref": "U1", "type": "ttl7447"},
+      {"ref": "DS1", "type": "seven_segment"},
+      {"ref": "Qa", "type": "output_pin", "label": "Qa"},
+      {"ref": "Qb", "type": "output_pin", "label": "Qb"},
+      {"ref": "Qc", "type": "output_pin", "label": "Qc"},
+      {"ref": "Qd", "type": "output_pin", "label": "Qd"},
+      {"ref": "Qe", "type": "output_pin", "label": "Qe"},
+      {"ref": "Qf", "type": "output_pin", "label": "Qf"},
+      {"ref": "Qg", "type": "output_pin", "label": "Qg"}
+    ],
+    "nets": {
+      "n_d": ["D.pin", "U1.D"],
+      "n_c": ["C.pin", "U1.C"],
+      "n_b": ["B.pin", "U1.B"],
+      "n_a": ["A.pin", "U1.A"],
+      "n_en": ["EN.pin", "U1.LT", "U1.BI", "U1.RBI", "DS1.dp"],
+      "n_qa": ["U1.QA", "Qa.pin", "DS1.a"],
+      "n_qb": ["U1.QB", "Qb.pin", "DS1.b"],
+      "n_qc": ["U1.QC", "Qc.pin", "DS1.c"],
+      "n_qd": ["U1.QD", "Qd.pin", "DS1.d"],
+      "n_qe": ["U1.QE", "Qe.pin", "DS1.e"],
+      "n_qf": ["U1.QF", "Qf.pin", "DS1.f"],
+      "n_qg": ["U1.QG", "Qg.pin", "DS1.g"]
+    }
+  },
+  "analysis": {
+    "runs": [
+      {"id": "exhaustive", "type": "truth_table", "label": "all input combinations",
+       "inputs": ["D", "C", "B", "A", "EN"]}
+    ],
+    "measurements": [
+      {"name": "segment_table", "run": "exhaustive", "kind": "table",
+       "outputs": ["Qa", "Qb", "Qc", "Qd", "Qe", "Qf", "Qg"]},
+      {"kind": "regime", "run": "exhaustive", "assert": "no_floating_inputs"},
+      {"kind": "regime", "run": "exhaustive", "assert": "all_outputs_driven"},
+      {"kind": "regime", "run": "exhaustive", "assert": "no_combinational_loops"}
+    ]
+  },
+  "design_notes": [
+    {"item": "decoder",
+     "choice": "the 7447 from Logisim Evolution's TTL library, as the question requires",
+     "rationale": "the question names the part; a gate-level equivalent would answer a different question, and the 7447's own decode of the six invalid codes is part of what is being observed",
+     "rationale_origin": "generated"},
+    {"item": "control pins",
+     "choice": "LT, BI and RBI are tied to one input pin EN, which must be held HIGH to read the BCD decode",
+     "rationale": "all three are active low. Evolution's 7447 leaves them as real ports, and a floating control pin would make every segment output undefined, so they are driven from a single pin the student can see and set rather than left dangling",
+     "rationale_origin": "generated"},
+    {"item": "outputs",
+     "choice": "each segment drives BOTH an output pin and the display",
+     "rationale": "the display is what the question asks to observe, but a display has no outputs and cannot appear in a truth table. The output pins are what makes the segment pattern recordable for all sixteen codes",
+     "rationale_origin": "generated"}
+  ],
+  "asks": [
+    {"text": "test all 16 possible 4-bit input combinations", "answered_by": "segment_table"},
+    {"text": "Record the segment pattern displayed for each input", "answered_by": "segment_table"}
+  ]
+}

@@ -76,7 +76,8 @@ class FakeProvider:
         self.replies = list(replies)
         self.prompts = []
 
-    def complete(self, prompt, *, images=(), max_tokens=4000, temperature=0.2):
+    def complete(self, prompt, *, images=(), max_tokens=4000, temperature=0.2,
+                 json_object=False):
         self.prompts.append(prompt)
         if not self.replies:
             raise AssertionError("the loop asked for more replies than the "
@@ -248,7 +249,8 @@ class PoolishProvider(FakeProvider):
     name = "pool"
     model = "groq:a+cerebras:b"
 
-    def complete(self, prompt, *, images=(), max_tokens=4000, temperature=0.2):
+    def complete(self, prompt, *, images=(), max_tokens=4000, temperature=0.2,
+                 json_object=False):
         reply = super().complete(prompt, images=images, max_tokens=max_tokens,
                                  temperature=temperature)
         return Reply(text=reply.text, model="llama-3.3-70b",

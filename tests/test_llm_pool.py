@@ -52,7 +52,7 @@ class FakeMember:
         self._replies = list(replies) or ["ok"]
 
     def complete(self, prompt, *, images=(), max_tokens=4000,
-                 temperature=0.2):
+                 temperature=0.2, json_object=False):
         index = len(self.calls)
         self.calls.append(prompt)
         if index < len(self._errors) and self._errors[index] is not None:
@@ -187,6 +187,35 @@ def test_every_member_failing_names_every_failure_not_just_the_last():
     message = str(caught.value)
     assert "key rejected" in message and "endpoint unreachable" in message
     assert "a" in message and "b" in message
+
+
+def test_one_noisy_member_cannot_eat_the_whole_wait_budget():
+    """Measured against a free OpenRouter model: it rate limited with a
+    five-second retry, over and over, and the pool obediently waited for it
+    thirty times -- spending the entire budget on one member and never
+    reaching another that was merely slower."""
+    noisy = FakeMember("noisy", errors=[llm.RateLimited("wait", retry_after=5)] * 50)
+    slow = FakeMember("slow", errors=[llm.RateLimited("wait", retry_after=40)]
+                              + [None])
+    pool, clock = make_pool(noisy, slow, max_wait=200, max_tries_each=3)
+
+    reply = pool.complete("hello")
+
+    assert reply.provider == "slow"
+    assert len(noisy.calls) <= 3
+
+
+def test_the_exhausted_message_says_the_budget_was_SPENT_not_that_5s_is_long():
+    """"the earliest member wakes in 5s, which is past the 180s budget" is
+    arithmetic nobody can follow. The truth is that the budget went on
+    earlier waits, and the message has to say so."""
+    a = FakeMember("a", errors=[llm.RateLimited("wait", retry_after=30)] * 10)
+    pool, clock = make_pool(a, max_wait=60, max_tries_each=10)
+
+    with pytest.raises(llm.LLMError) as caught:
+        pool.complete("hello")
+
+    assert "waited so far" in str(caught.value)
 
 
 def test_an_empty_pool_says_which_keys_to_set_rather_than_failing_obscurely():

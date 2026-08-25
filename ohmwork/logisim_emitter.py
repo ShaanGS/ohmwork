@@ -58,6 +58,7 @@ from ohmwork import logisim_symbols
 from ohmwork.targets import LogisimTarget
 
 ROW_GAP = 20            # clear space between one component's ports and the next's
+STUB_STEP = 10          # per-port escape length for pins that share a row
 COLUMN_GAP = 20         # minimum clear space either side of a channel band
 ORIGIN = (100, 100)
 
@@ -168,8 +169,18 @@ def place(circuit):
     def extent(comp):
         name, attrs = target.TYPE_MAP[comp["type"]]
         offsets = logisim_symbols.ports_of(name, attrs)
+        top, bottom = min(p.dy for p in offsets), max(p.dy for p in offsets)
+        # Room for the escape stubs of pins that share a row -- without it a
+        # 7447's stubs reach into the next component's band and the whole
+        # no-shared-row argument is void again, one layer up.
+        rows = {}
+        for port in offsets:
+            rows.setdefault(port.dy, 0)
+            rows[port.dy] += 1
+        top -= STUB_STEP * rows.get(top, 1) if rows.get(top, 1) > 1 else 0
+        bottom += STUB_STEP * rows.get(bottom, 1) if rows.get(bottom, 1) > 1 else 0
         return (min(p.dx for p in offsets), max(p.dx for p in offsets),
-                min(p.dy for p in offsets), max(p.dy for p in offsets))
+                top, bottom)
 
     reach = {c["ref"]: extent(c) for c in components}
     in_column = {}
@@ -182,19 +193,24 @@ def place(circuit):
     def left_of(d):
         return min((reach[ref][0] for ref in in_column.get(d, [])), default=0)
 
-    column_x, x = {}, ORIGIN[0]
+    # The channel band starts after the column's RIGHTMOST PORT, not after
+    # its anchor. This is the second time that distinction has bitten: the
+    # first was a 4-input OR whose inputs sit at -50, and the band landed on
+    # them. A 7447 is the mirror image -- its pins run 150 units to the RIGHT
+    # of its anchor, so a band placed a gap past the anchor sits inside the
+    # chip. Same rule, opposite direction, same silent short.
+    column_x, channel_base, x = {}, {}, ORIGIN[0]
     for d in range(last + 1):
         column_x[d] = x
         channels = len(per_depth.get(d, []))
-        # this column's widest body, then the channel band, then whatever the
-        # NEXT column's leftmost port sticks out to the left of its anchor.
-        x += (right_of(d) + COLUMN_GAP + 10 * channels + COLUMN_GAP
-              - min(0, left_of(d + 1)))
+        channel_base[d] = x + max(0, right_of(d)) + COLUMN_GAP
+        x = (channel_base[d] + 10 * channels + COLUMN_GAP
+             - min(0, left_of(d + 1)))
 
     channel_x = {}
     for d, net_list in per_depth.items():
         for k, net in enumerate(net_list):
-            channel_x[net] = column_x[d] + COLUMN_GAP + 10 * k
+            channel_x[net] = channel_base[d] + 10 * k
 
     # ONE ROW PER COMPONENT, globally. Wasteful and deliberate: it is what
     # makes a horizontal run unable to pass through a foreign port.
@@ -216,22 +232,61 @@ def place(circuit):
         for c in order
     ]
 
-    ports = {}
+    # A port's position, and the point a route may meet it at.
+    #
+    # For a gate they are the same: its ports face left and right, so a
+    # horizontal run reaches one without touching another. A DIP is the case
+    # that breaks: SEVEN of a 7447's pins sit on one row at the same y, and
+    # routing to them along that y puts one net's endpoint on another net's
+    # wire -- a silent short, and the exact hazard validate_wiring exists to
+    # catch. It caught it.
+    #
+    # So a port that shares its row with siblings gets a short vertical stub
+    # of its OWN length, pointing away from the body, and the route meets it
+    # at the far end. Distinct lengths give each net a distinct horizontal
+    # lane, and the stubs themselves sit at distinct x because the pins do.
+    ports, meet, stubs = {}, {}, []
     for comp in components:
         name, attrs = target.TYPE_MAP[comp["type"]]
         ax, ay = anchor[comp["ref"]]
-        for port in logisim_symbols.ports_of(name, attrs):
-            ports[f"{comp['ref']}.{port.name}"] = (ax + port.dx, ay + port.dy)
+        offsets = logisim_symbols.ports_of(name, attrs)
+        rows = {}
+        for port in offsets:
+            rows.setdefault(port.dy, []).append(port)
+        middle = (min(p.dy for p in offsets) + max(p.dy for p in offsets)) / 2
+
+        for port in offsets:
+            here = (ax + port.dx, ay + port.dy)
+            ports[f"{comp['ref']}.{port.name}"] = here
+            siblings = sorted(rows[port.dy], key=lambda p: p.dx)
+            if len(siblings) == 1:
+                meet[f"{comp['ref']}.{port.name}"] = here
+                continue
+            # Away from the body: a row above the middle escapes upwards.
+            direction = -1 if port.dy <= middle else 1
+            length = STUB_STEP * (siblings.index(port) + 1)
+            far = (here[0], here[1] + direction * length)
+            meet[f"{comp['ref']}.{port.name}"] = far
+            stubs.append((f"{comp['ref']}.{port.name}", (here, far)))
 
     wires = []
+    stub_owner = {}
+    for entry, segment in stubs:
+        stub_owner[entry] = segment
+
     for net, members in sorted(nets.items()):
         source_xy, sinks = None, []
         for entry in members:
             ref, pin = entry.split(".", 1)
+            # The escape stub belongs to the net the port is on, and is
+            # emitted only for ports a net actually uses -- an unused pin
+            # gets no wire, exactly as before.
+            if entry in stub_owner:
+                wires.append((net, stub_owner[entry]))
             if _is_source(target, by_ref[ref], pin):
-                source_xy = ports[entry]
+                source_xy = meet[entry]
             else:
-                sinks.append(ports[entry])
+                sinks.append(meet[entry])
         if source_xy is None:
             raise RoutingError(f"net {net!r} has no driving port")
         cx = channel_x[net]
@@ -357,7 +412,43 @@ This file is intended to be loaded by Logisim (http://www.cburch.com/logisim/).
 
 #: index into the <lib> block ABOVE. Kept beside it deliberately: these
 #: numbers are file-local and mean nothing on their own.
-_LIB_INDEX = {"#Wiring": "0", "#Gates": "1", "#Base": "6"}
+#: Library indices for each header. They are NOT the same, and they are not
+#: interchangeable: `lib="6"` is #Base in a 2.7.1 file and #TTL in an
+#: Evolution one. Resolving by NAME through the header actually emitted is
+#: the same discipline the parser follows when reading a foreign file.
+_LIB_INDEX = {
+    "2.7.1": {"#Wiring": "0", "#Gates": "1", "#Base": "6"},
+    "evolution": {"#Wiring": "0", "#Gates": "1", "#Plexers": "2",
+                  "#Arithmetic": "3", "#Memory": "4", "#I/O": "5",
+                  "#TTL": "6", "#Base": "8"},
+}
+
+#: Which libraries a Logisim 2.7.1 file can declare at all. A circuit using
+#: anything else is not a 2.7.1 circuit and must not claim to be one: 2.7.1
+#: has no TTL library, so a file with a 7447 in it would not open.
+_CLASSIC_LIBS = frozenset({"#Wiring", "#Gates", "#Base"})
+
+
+def _dialect(circuit, target) -> str:
+    """Which Logisim the emitted file has to be.
+
+    2.7.1 by default and by preference -- every geometry measurement behind
+    the gate table came from 2.7.1 files, and Evolution opens them in
+    compatibility mode. But a 7447 exists ONLY in Evolution, so a circuit
+    containing one is an Evolution circuit and saying otherwise would produce
+    a file that names a library its own header does not declare.
+    """
+    for comp in circuit["components"]:
+        name, _ = target.TYPE_MAP[comp["type"]]
+        if logisim_symbols.LIB_OF[name] not in _CLASSIC_LIBS:
+            return "evolution"
+    return "2.7.1"
+
+
+#: Copied verbatim from a real Logisim Evolution file, the same discipline
+#: plt.py follows: transcribe the vendor's own boilerplate rather than invent
+#: a minimal one, because which parts of it are load-bearing is unknown.
+_EVOLUTION_HEADER = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n<project source="3.8.0" version="1.0">\n  This file is intended to be loaded by Logisim-evolution v3.8.0(https://github.com/logisim-evolution/).\n\n  <lib desc="#Wiring" name="0">\n    <tool name="Splitter">\n      <a name="appear" val="right"/>\n      <a name="fanout" val="4"/>\n      <a name="incoming" val="4"/>\n    </tool>\n    <tool name="Pin">\n      <a name="appearance" val="classic"/>\n    </tool>\n    <tool name="Probe">\n      <a name="appearance" val="classic"/>\n      <a name="facing" val="north"/>\n    </tool>\n    <tool name="Constant">\n      <a name="value" val="0x0"/>\n    </tool>\n  </lib>\n  <lib desc="#Gates" name="1"/>\n  <lib desc="#Plexers" name="2"/>\n  <lib desc="#Arithmetic" name="3"/>\n  <lib desc="#Memory" name="4"/>\n  <lib desc="#I/O" name="5"/>\n  <lib desc="#TTL" name="6"/>\n  <lib desc="#TCL" name="7"/>\n  <lib desc="#Base" name="8"/>\n  <lib desc="#BFH-Praktika" name="9"/>\n  <lib desc="#Input/Output-Extra" name="10"/>\n  <lib desc="#Soc" name="11"/>\n  <main name="main"/>\n  <options>\n    <a name="gateUndefined" val="ignore"/>\n    <a name="simlimit" val="1000"/>\n    <a name="simrand" val="0"/>\n  </options>\n  <mappings>\n    <tool lib="8" map="Button2" name="Poke Tool"/>\n    <tool lib="8" map="Button3" name="Menu Tool"/>\n    <tool lib="8" map="Ctrl Button1" name="Menu Tool"/>\n  </mappings>\n  <toolbar>\n    <tool lib="8" name="Poke Tool"/>\n    <tool lib="8" name="Edit Tool"/>\n    <tool lib="8" name="Wiring Tool"/>\n    <tool lib="8" name="Text Tool"/>\n    <sep/>\n    <tool lib="0" name="Pin"/>\n    <tool lib="0" name="Pin">\n      <a name="facing" val="west"/>\n      <a name="output" val="true"/>\n    </tool>\n    <sep/>\n    <tool lib="1" name="NOT Gate"/>\n    <tool lib="1" name="AND Gate"/>\n    <tool lib="1" name="OR Gate"/>\n    <tool lib="1" name="XOR Gate"/>\n    <tool lib="1" name="NAND Gate"/>\n    <tool lib="1" name="NOR Gate"/>\n    <sep/>\n    <tool lib="4" name="D Flip-Flop"/>\n    <tool lib="4" name="Register"/>\n  </toolbar>\n  <circuit name="main">\n'
 
 
 def emit_circ(circuit) -> str:
@@ -368,12 +459,14 @@ def emit_circ(circuit) -> str:
     for item in placements:
         logisim_symbols.check_label(item["label"])
 
-    lines = [_HEADER]
+    dialect = _dialect(circuit, target)
+    index = _LIB_INDEX[dialect]
+    lines = [_HEADER if dialect == "2.7.1" else _EVOLUTION_HEADER]
     for _, ((x1, y1), (x2, y2)) in wires:
         lines.append(f'    <wire from="({x1},{y1})" to="({x2},{y2})"/>\n')
     for item in placements:
         name, attrs = target.TYPE_MAP[item["type"]]
-        lib = _LIB_INDEX[logisim_symbols.LIB_OF[name]]
+        lib = index[logisim_symbols.LIB_OF[name]]
         x, y = item["loc"]
         lines.append(f'    <comp lib="{lib}" loc="({x},{y})" name="{name}">\n')
         for key, value in sorted(attrs.items()):
