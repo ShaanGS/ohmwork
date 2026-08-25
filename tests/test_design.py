@@ -238,6 +238,41 @@ def test_a_question_becomes_a_verified_solution(tmp_path):
     assert backend.calls == 1
 
 
+class PoolishProvider(FakeProvider):
+    """A provider whose own name is not the name of whoever answered.
+
+    Exactly the shape of llm.Pool: it dispatches to a member, and the member
+    is what a manifest has to record.
+    """
+
+    name = "pool"
+    model = "groq:a+cerebras:b"
+
+    def complete(self, prompt, *, images=(), max_tokens=4000, temperature=0.2):
+        reply = super().complete(prompt, images=images, max_tokens=max_tokens,
+                                 temperature=temperature)
+        return Reply(text=reply.text, model="llama-3.3-70b",
+                     provider="cerebras")
+
+
+def test_provenance_names_the_model_that_answered_not_the_pool(tmp_path):
+    """"pool" is not a model id and not an extractor anyone can re-run.
+
+    Every result in this project names the tool that produced it, and the
+    reply already carries the truth -- so the recorded provenance is read
+    from the reply, never from the provider object.
+    """
+    provider = PoolishProvider([SPEC_JSON, design_reply()])
+    solution = solve(QUESTION, provider=provider,
+                     backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                     workdir=tmp_path)
+
+    assert (solution.provider, solution.model) == ("cerebras", "llama-3.3-70b")
+    extractor = solution.question_data["source"]["extractor"]
+    assert "cerebras/llama-3.3-70b" in extractor
+    assert "pool" not in extractor
+
+
 def test_the_solution_carries_the_spec_for_a_human_to_read(tmp_path):
     """The one failure the loop cannot catch is a misreading of the question.
     The only defence is a person seeing the reading, so it must be part of

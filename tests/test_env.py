@@ -105,8 +105,15 @@ def test_the_committed_template_holds_no_real_key():
     """.env.example ships in the repo. If a real key ever lands in it, it
     lands in the history."""
     text = (ROOT / ".env.example").read_text(encoding="utf-8")
-    for line in text.splitlines():
-        if line.startswith("GROQ_API_KEY="):
-            assert "replace_me" in line, "a real key is in the template"
-        if line.startswith("ANTHROPIC_API_KEY="):
-            assert "replace_me" in line
+    # Every key line, named or not: the template grew from one vendor to
+    # five, and a check that knows only the vendors present when it was
+    # written stops protecting the ones added afterwards.
+    checked = 0
+    for raw in text.splitlines():
+        line = raw.strip().removeprefix("#").strip()
+        name, _, value = line.partition("=")
+        if not value or not name.endswith("_API_KEY"):
+            continue
+        checked += 1
+        assert "replace_me" in value, f"a real key is in the template: {name}"
+    assert checked >= 2, "the template stopped showing how to set a key"

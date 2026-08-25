@@ -363,10 +363,15 @@ def solve(question: str, *, provider=None, backend=None, workdir,
             retry=retry)
         reply = provider.complete(prompt, max_tokens=4000)
 
+        # Provenance comes from the REPLY, never from the provider object. A
+        # pool is a provider whose name is "pool" and whose model is a
+        # description of its membership; recording either as the model that
+        # designed this circuit would be a lie in the field that exists to
+        # prevent lies. The Reply already carries which member answered.
         try:
             circuit = _json_object(reply.text, "design")
             data, circ_path, table, comparison = _attempt(
-                circuit, question, spec, provider.name, provider.model,
+                circuit, question, spec, reply.provider, reply.model,
                 backend, workdir, index)
         except DesignError as exc:
             failure = str(exc)
@@ -375,8 +380,8 @@ def solve(question: str, *, provider=None, backend=None, workdir,
                 return Solution(
                     question=question, spec=spec, question_data=data,
                     circ_path=circ_path, table=table, comparison=comparison,
-                    attempts=index, provider=provider.name,
-                    model=provider.model,
+                    attempts=index, provider=reply.provider,
+                    model=reply.model,
                     failed_attempts=tuple(history))
             failure = comparison.summary
 

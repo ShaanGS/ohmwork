@@ -70,15 +70,26 @@ def _solve(args) -> int:
     four lines of algebra can catch what no amount of simulation will.
     """
     from ohmwork.design import DesignError, solve
-    from ohmwork.llm import LLMError
+    from ohmwork.llm import LLMError, get_provider
     from ohmwork.logisim_backend import best_available_backend
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     backend = best_available_backend()
 
+    try:
+        provider = get_provider()
+    except LLMError as exc:
+        print(f"no model provider: {exc}", file=sys.stderr)
+        return 1
+
     print(f"question: {args.solve}")
     print(f"evaluator: {backend.name} [{backend.verification}]")
+    # WHICH model answers is a fact about the result, so it is printed
+    # before the result. A pool additionally says who is NOT in it: two live
+    # members and four live members produce identical-looking output, and
+    # the difference is the difference between a pause and no pause.
+    print(f"model: {describe_provider(provider)}")
     if backend.verification != "external":
         print("!! Logisim was not found, so the circuit will be checked by "
               "ohmwork's OWN evaluator, which also computes anything it "
@@ -87,7 +98,8 @@ def _solve(args) -> int:
     print()
 
     try:
-        solution = solve(args.solve, backend=backend, workdir=out_dir)
+        solution = solve(args.solve, provider=provider, backend=backend,
+                         workdir=out_dir)
     except (DesignError, LLMError) as exc:
         print(f"no verified circuit: {exc}", file=sys.stderr)
         return 1
@@ -113,9 +125,36 @@ def _solve(args) -> int:
         print("    " + "  ".join(f"{bit:>4}" for bit in row))
     print()
     print(f"circuit file: {solution.circ_path}")
+    print(f"designed by: {solution.provider}/{solution.model}")
     print("The layout is generated mechanically: inputs in a left column, "
           "gates in columns by logic depth. Correct, not pretty.")
+    _report_pool_incidents(provider)
     return 0
+
+
+def describe_provider(provider) -> str:
+    """One line naming who is answering. A pool lists its membership."""
+    describe = getattr(provider, "describe", None)
+    return describe() if describe else f"{provider.name}/{provider.model}"
+
+
+def _report_pool_incidents(provider) -> None:
+    """What the pool absorbed on the way to the answer.
+
+    A rate limit that cost nothing is worth seeing anyway: it is the evidence
+    that the pool did something, and a member failing every single call for a
+    dead key looks exactly like a healthy pool from the outside.
+    """
+    incidents = getattr(provider, "incidents", None)
+    if not incidents:
+        return
+    limited = sorted({i.member for i in incidents if i.rate_limited})
+    broken = {i.member: i.reason for i in incidents if not i.rate_limited}
+    if limited:
+        print(f"pool: rate limited and skipped past — {', '.join(limited)}")
+    for member, reason in broken.items():
+        print(f"pool: {member} FAILED and was set aside — "
+              f"{reason.splitlines()[0]}")
 
 
 def _build_site(args, parser) -> int:
@@ -154,8 +193,12 @@ def main(argv=None) -> int:
                              "actually serve, and exit. Hosted catalogues "
                              "change; this is how you find a current id")
     parser.add_argument("--llm",
-                        help="provider for generated text: groq (default) or "
-                             "anthropic. Also settable as OHMWORK_LLM")
+                        help="provider for generated text: groq (default), "
+                             "cerebras, gemini, openrouter, mistral, "
+                             "anthropic, or 'pool' to use every provider "
+                             "whose key is set, moving to the next one when "
+                             "a free tier rate limits. Also settable as "
+                             "OHMWORK_LLM")
     parser.add_argument("--extract", nargs="+", metavar="SOURCE",
                         help="extract a question JSON from a lab-manual page: "
                              "one or more image files and/or a .txt of the "
@@ -413,6 +456,39 @@ def _confirm(question: str) -> str:
         return "n"
 
 
+def _list_pool_models(pool) -> int:
+    """Every member's catalogue, member by member.
+
+    Not one merged list: an id is only meaningful against the account that
+    serves it, and merging them would invite setting a Cerebras id on Gemini.
+    Each member is checked against its OWN configured model, so a pool that
+    is one stale id away from being useful says which member and which id.
+    """
+    from ohmwork import llm
+
+    print(pool.describe())
+    problems = 0
+    for member in pool.members:
+        provider = member.provider
+        print()
+        try:
+            models = provider.available_models()
+        except llm.LLMError as e:
+            problems += 1
+            print(f"{provider.name}: COULD NOT LIST — {e}")
+            continue
+        print(f"{provider.name} serves {len(models)} model(s); "
+              f"configured: {provider.model}")
+        for model in models:
+            marker = " <- configured" if model == provider.model else ""
+            print(f"  {model}{marker}")
+        if provider.model not in models:
+            problems += 1
+            print(f"!! {provider.model} is NOT in that list — set "
+                  f"OHMWORK_LLM_MODEL_{provider.name.upper()}")
+    return 1 if problems else 0
+
+
 def _list_models(args) -> int:
     """What the configured account can actually serve.
 
@@ -427,6 +503,14 @@ def _list_models(args) -> int:
         os.environ["OHMWORK_LLM"] = args.llm
     try:
         provider = llm.get_provider()
+    except llm.LLMError as e:
+        print(f"cannot list models: {e}", file=sys.stderr)
+        return 1
+
+    if isinstance(provider, llm.Pool):
+        return _list_pool_models(provider)
+
+    try:
         models = provider.available_models()
     except llm.LLMError as e:
         print(f"cannot list models: {e}", file=sys.stderr)

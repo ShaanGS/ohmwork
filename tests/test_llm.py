@@ -192,6 +192,19 @@ def test_an_ordinary_failure_is_not_dressed_up_as_a_bad_model():
     assert "rate limit" in str(excinfo.value)
 
 
+def test_a_groq_rate_limit_arrives_as_RateLimited_so_a_pool_can_move_on():
+    """The pool tells "slow down" from "this member is broken" by TYPE.
+
+    Groq answering a 429 as a plain LLMError would have the pool disable a
+    perfectly healthy account for the rest of the run.
+    """
+    provider = groq(raise_error=Exception(
+        "Rate limit reached. Please try again in 8.5s"))
+    with pytest.raises(llm.RateLimited) as excinfo:
+        provider.complete("hello")
+    assert excinfo.value.retry_after == pytest.approx(8.5)
+
+
 # ------------------------------------------------------------------ images
 
 

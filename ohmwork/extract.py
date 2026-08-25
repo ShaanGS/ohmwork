@@ -223,7 +223,10 @@ def extract(text: str | None, images=(), *, provider=None,
         warnings = []
         _restore_transcription(data, text, warnings)
         data.setdefault("target", target)
-        data["source"] = _source_block(data, provider, attempt, source_file,
+        # The REPLY names which model answered, not the provider object: a
+        # pool answers from whichever member was not rate limited, and
+        # "pool" is not an extractor anyone can re-run.
+        data["source"] = _source_block(data, reply, attempt, source_file,
                                        data.get("question"))
         try:
             load_question(data)
@@ -239,8 +242,8 @@ def extract(text: str | None, images=(), *, provider=None,
             # a traceback here.
             last_error = f"{type(e).__name__}: {e}"
             continue
-        return Extraction(data=data, attempts=attempt, model=provider.model,
-                          provider=provider.name, warnings=warnings)
+        return Extraction(data=data, attempts=attempt, model=reply.model,
+                          provider=reply.provider, warnings=warnings)
 
     raise ExtractionError(
         f"the model did not produce a question this gate accepts in "
@@ -248,7 +251,7 @@ def extract(text: str | None, images=(), *, provider=None,
     )
 
 
-def _source_block(data, provider, attempt, source_file, question_text) -> dict:
+def _source_block(data, reply, attempt, source_file, question_text) -> dict:
     """Provenance, in the schema the gate already knows.
 
     Keeps whatever the model reported about its own uncertainty
@@ -257,7 +260,7 @@ def _source_block(data, provider, attempt, source_file, question_text) -> dict:
     """
     source = dict(data.get("source") or {})
     source["file"] = source_file or source.get("file") or "supplied text"
-    source["extractor"] = f"{provider.name}/{provider.model}"
+    source["extractor"] = f"{reply.provider}/{reply.model}"
     source["attempts"] = attempt
     if question_text:
         source["question_chars"] = len(question_text)
