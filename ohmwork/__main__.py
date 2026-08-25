@@ -61,6 +61,63 @@ def _make_stdout_unicode_safe() -> None:
             pass
 
 
+def _solve(args) -> int:
+    """--solve: a digital question in, a verified circuit out.
+
+    Prints the READING before the answer, deliberately. The loop can prove
+    that the circuit computes the specification; nothing here can prove the
+    specification is the right reading of the question. A human glancing at
+    four lines of algebra can catch what no amount of simulation will.
+    """
+    from ohmwork.design import DesignError, solve
+    from ohmwork.llm import LLMError
+    from ohmwork.logisim_backend import best_available_backend
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    backend = best_available_backend()
+
+    print(f"question: {args.solve}")
+    print(f"evaluator: {backend.name} [{backend.verification}]")
+    if backend.verification != "external":
+        print("!! Logisim was not found, so the circuit will be checked by "
+              "ohmwork's OWN evaluator, which also computes anything it "
+              "would be checked against. Install Logisim Evolution or set "
+              "OHMWORK_LOGISIM.")
+    print()
+
+    try:
+        solution = solve(args.solve, backend=backend, workdir=out_dir)
+    except (DesignError, LLMError) as exc:
+        print(f"no verified circuit: {exc}", file=sys.stderr)
+        return 1
+
+    print("THE READING — this is what the circuit was verified AGAINST.")
+    print("If this misreads the question, every check below still passes.")
+    print()
+    for line in solution.spec.render().splitlines():
+        print(f"    {line}")
+    print()
+
+    for index, failure in solution.failed_attempts:
+        first = failure.splitlines()[0]
+        print(f"  attempt {index} was rejected: {first}")
+    print(f"VERIFIED in {solution.attempts} design attempt(s) by "
+          f"{solution.table.backend}.")
+    print(f"  {solution.comparison.summary.splitlines()[0]}")
+    print()
+
+    names = solution.table.inputs + solution.table.outputs
+    print("    " + "  ".join(f"{n:>4}" for n in names))
+    for row in solution.table.rows:
+        print("    " + "  ".join(f"{bit:>4}" for bit in row))
+    print()
+    print(f"circuit file: {solution.circ_path}")
+    print("The layout is generated mechanically: inputs in a left column, "
+          "gates in columns by logic depth. Correct, not pretty.")
+    return 0
+
+
 def _build_site(args, parser) -> int:
     """Render the library into static HTML.
 
@@ -143,6 +200,11 @@ def main(argv=None) -> int:
                         help="date recorded in the manifest (default: today). "
                              "Passed in so regenerating an unchanged question "
                              "produces an identical file")
+    parser.add_argument("--solve", metavar="QUESTION",
+                        help="a digital question in plain English. Designs a "
+                             "circuit for it and does not return until "
+                             "Logisim has confirmed the circuit computes what "
+                             "the question asked for")
     parser.add_argument("--build-site", metavar="DIR",
                         help="render --library into a folder of static HTML "
                              "at DIR and exit. No question file is needed: "
@@ -154,6 +216,8 @@ def main(argv=None) -> int:
         return _list_models(args)
     if args.build_site:
         return _build_site(args, parser)
+    if args.solve:
+        return _solve(args)
     if args.extract:
         if args.llm:
             os.environ["OHMWORK_LLM"] = args.llm
