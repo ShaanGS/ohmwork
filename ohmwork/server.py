@@ -50,8 +50,10 @@ import tempfile
 import time
 from pathlib import Path
 
-from fastapi import Cookie, FastAPI, HTTPException, Request, Response
+from fastapi import Cookie, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+
+from ohmwork.domain import DomainError, check_digital
 
 #: How long a login lasts. Long enough that five people are not typing a
 #: passphrase all day; short enough that a borrowed laptop is not forever.
@@ -243,6 +245,16 @@ def create_app(*, solver=None, password: str | None = None,
         runs, and the steps ARE the honest account of what happened -- the
         reading it worked from, and every design it had to throw away.
         """
+        # The domain screen belongs to the ENDPOINT as well as to the loop.
+        # It is cheap, it spends nothing, and putting it only inside
+        # design.solve would make the guarantee depend on which solver was
+        # injected -- the same reasoning as _backfill below.
+        try:
+            check_digital(question)
+        except DomainError as exc:
+            yield sse("refused", {"message": f"{exc}", "download": None})
+            return
+
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
         workdir = Path(tempfile.mkdtemp(prefix="ohmwork-solve-"))
@@ -265,6 +277,14 @@ def create_app(*, solver=None, password: str | None = None,
                 # not a guarantee.
                 _backfill(solution, seen, progress)
                 progress("verified", _verified_payload(solution, downloads))
+            except DomainError as exc:
+                # A REFUSAL, not a failure, and rendered as a different thing.
+                # "the loop tried and could not" and "the loop should never
+                # have tried" are different facts about a question, and
+                # collapsing them tells someone to rephrase when the real
+                # answer is "use the other tool".
+                progress("refused", {"message": f"{exc}", "download": None})
+                shutil.rmtree(workdir, ignore_errors=True)
             except Exception as exc:                        # noqa: BLE001
                 # Deliberately broad. Everything from here reaches a browser,
                 # so the alternative to catching it is a stack trace in the

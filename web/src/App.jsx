@@ -130,12 +130,13 @@ function Solver({ onExpired }) {
   const [reading, setReading] = useState(null)
   const [attempts, setAttempts] = useState([])
   const [verified, setVerified] = useState(null)
+  const [refused, setRefused] = useState(null)
   const [error, setError] = useState(null)
   const bottom = useRef(null)
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [reading, attempts, verified, error])
+  }, [reading, attempts, verified, refused, error])
 
   async function run() {
     const text = question.trim()
@@ -144,6 +145,7 @@ function Solver({ onExpired }) {
     setReading(null)
     setAttempts([])
     setVerified(null)
+    setRefused(null)
     setError(null)
 
     let response
@@ -174,12 +176,13 @@ function Solver({ onExpired }) {
           return [...rest, data].sort((a, b) => a.index - b.index)
         })
       } else if (name === 'verified') setVerified(data)
+      else if (name === 'refused') setRefused(data)
       else if (name === 'error') setError(data)
     }
     setRunning(false)
   }
 
-  const idle = !running && !reading && !verified && !error
+  const idle = !running && !reading && !verified && !error && !refused
 
   return (
     <>
@@ -195,7 +198,9 @@ function Solver({ onExpired }) {
         <div className="mx-auto w-full max-w-3xl px-5 py-8">
           {idle && <Intro onPick={setQuestion} />}
 
-          {(running || reading) && (
+          {refused && <Refused refused={refused} />}
+
+          {(running || reading) && !refused && (
             <Step done={!!reading} label="reading the question">
               {reading && <Reading reading={reading} />}
             </Step>
@@ -402,6 +407,28 @@ function Fact({ label, children }) {
     </div>
   )
 }
+
+function Refused({ refused }) {
+  // The message is written as paragraphs: what was refused, the evidence,
+  // and finally what to do instead. The last one is the advice.
+  const paragraphs = refused.message.split('\n\n')
+  const advice = paragraphs[paragraphs.length - 1]
+  const rest = paragraphs.slice(0, -1)
+  return (
+    <div className="rise mb-6 rounded-xl border border-warn/30 bg-warn/[0.05] p-5">
+      <p className="text-sm text-warn">not a question this can answer</p>
+      {rest.map((paragraph) => (
+        <p key={paragraph} className="mt-2 text-sm leading-relaxed text-ink-200">
+          {paragraph}
+        </p>
+      ))}
+      <p className="mt-3 border-t border-warn/15 pt-3 text-xs leading-relaxed text-ink-400">
+        {advice}
+      </p>
+    </div>
+  )
+}
+
 
 function Failed({ error }) {
   return (

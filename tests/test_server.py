@@ -230,6 +230,36 @@ def test_a_failed_solve_yields_an_error_and_NO_download():
     assert stream["error"].get("download") is None
 
 
+def test_an_analog_question_is_REFUSED_and_never_reaches_the_solver():
+    """The incident, at the endpoint.
+
+    An LTspice question reached the digital loop, which invented boolean
+    signals for 12 V RMS waveforms and served the result as VERIFIED. The
+    screen runs before the solver, so no model call is made and no green
+    badge is possible.
+    """
+    calls = []
+
+    def solver(question, *, workdir, progress=None):
+        calls.append(question)
+        raise AssertionError("an analog question reached the design loop")
+
+    client = make_client(solver)
+    login(client)
+    stream = dict(events(solve(
+        client,
+        "Design a regulated 6.2 V supply in LTspice with a bridge rectifier, "
+        "a 470 uF filter and a Zener regulator on a 1 kOhm load.")))
+
+    assert calls == []
+    assert "verified" not in stream
+    # A refusal, rendered as its own thing: "the loop tried and could not" and
+    # "the loop should never have tried" are different facts about a question.
+    assert "refused" in stream
+    assert "LTspice" in stream["refused"]["message"]
+    assert stream["refused"]["download"] is None
+
+
 def test_an_empty_question_is_refused_before_a_single_model_call():
     calls = []
 

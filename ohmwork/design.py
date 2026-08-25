@@ -36,6 +36,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ohmwork.domain import (ANALOG_ADVICE, DomainError, check_digital,
+                            check_spec_has_logic)
 from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.spec import Spec, SpecError, compare_tables, evaluate_spec
 
@@ -77,6 +79,17 @@ RULES:
    "notes" as one sentence. A choice left unstated is a choice a reader
    cannot check.
 4. Do not restate the question. Do not explain. JSON only.
+
+REFUSING. This loop builds COMBINATIONAL DIGITAL LOGIC and verifies it in
+Logisim. If the question is not that -- if it asks about voltages, currents,
+waveforms, resistors, capacitors, diodes, transistors, amplifiers, filters,
+timing, clocks, memory or sequential state -- do NOT invent boolean signals
+for it. Return exactly:
+
+{{"unsupported": "one sentence saying what the question actually asks for"}}
+
+Signals that are not two-valued cannot be represented here at all, and a
+specification that pretends otherwise verifies perfectly and means nothing.
 
 QUESTION:
 {question}
@@ -158,6 +171,17 @@ def parse_spec_reply(text: str) -> Spec:
     it got wrong.
     """
     data = _json_object(text, "spec")
+
+    # LAYER 2: the model's own refusal channel, for a question outside this
+    # loop's domain written in words the deterministic screen does not know.
+    # A refusal is NOT a malformed reply and must not be retried: asking the
+    # same model the same question four more times is how a "no" becomes a
+    # confident "yes".
+    if "unsupported" in data and "expressions" not in data:
+        raise DomainError(
+            f"The model read this as a question the digital loop cannot "
+            f"answer: {data['unsupported']}\n\n{ANALOG_ADVICE}")
+
     for key in ("inputs", "outputs", "expressions"):
         if key not in data:
             raise DesignError(f"spec: missing {key!r}")
@@ -345,6 +369,11 @@ def solve(question: str, *, provider=None, backend=None, workdir,
     BEFORE the answer -- which is the one thing a human is here to check.
     """
     emit = progress or (lambda name, data: None)
+
+    # LAYER 1, before a single token is spent: a deterministic screen. See
+    # ohmwork/domain.py for the incident that put it here.
+    check_digital(question)
+
     if provider is None:
         from ohmwork.llm import get_provider
         provider = get_provider()
@@ -358,6 +387,11 @@ def solve(question: str, *, provider=None, backend=None, workdir,
     spec = parse_spec_reply(
         provider.complete(SPEC_PROMPT.format(question=question),
                           max_tokens=1500).text)
+    # LAYER 3: a spec with no logic in it verifies perfectly and means
+    # nothing. Checked BEFORE the reading is emitted, so a refused question
+    # never renders a reading that looks like the start of an answer.
+    check_spec_has_logic(spec)
+
     emit("reading", {"spec": spec.render(),
                      "inputs": list(spec.inputs),
                      "outputs": list(spec.outputs),

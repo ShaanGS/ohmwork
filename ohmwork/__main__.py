@@ -70,6 +70,7 @@ def _solve(args) -> int:
     four lines of algebra can catch what no amount of simulation will.
     """
     from ohmwork.design import DesignError, solve
+    from ohmwork.domain import DomainError
     from ohmwork.llm import LLMError, get_provider
     from ohmwork.logisim_backend import best_available_backend
 
@@ -100,6 +101,12 @@ def _solve(args) -> int:
     try:
         solution = solve(args.solve, provider=provider, backend=backend,
                          workdir=out_dir)
+    except DomainError as exc:
+        # Refused, not failed. Printed to stdout rather than stderr for the
+        # same reason it renders differently on the web: it is an ANSWER to
+        # the question asked -- "not this tool" -- rather than a breakdown.
+        print(f"refused: {exc}")
+        return 2
     except (DesignError, LLMError) as exc:
         print(f"no verified circuit: {exc}", file=sys.stderr)
         return 1
