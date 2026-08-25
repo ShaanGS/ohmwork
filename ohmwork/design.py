@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ohmwork.domain import (ANALOG_ADVICE, DomainError, check_digital,
-                            check_spec_has_logic)
+                            check_spec_has_logic, named_parts)
 from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.spec import Spec, SpecError, compare_tables, evaluate_spec
 
@@ -51,7 +51,19 @@ DEFAULT_ATTEMPTS = 4
 #: returned an empty string. The budget counts toward a free tier's
 #: per-minute limit, so it is not set higher than it needs to be -- but a
 #: number chosen to save tokens that produces no answer saves nothing.
-SPEC_MAX_TOKENS = 3000
+SPEC_MAX_TOKENS = 6000
+
+#: The design call's budget, and it is a squeeze between two measured walls.
+#: 4000 was not enough for the seven-segment question -- the reply came back
+#: empty, the whole budget spent thinking. 8000 was REFUSED outright: a free
+#: Groq account allows 8000 tokens per MINUTE counting prompt plus
+#: max_tokens, so asking for 8000 plus a prompt is a request that can never
+#: fit, and the answer is HTTP 413 rather than a slow one.
+#:
+#: So this is not a "bigger is safer" number. It is the largest budget that
+#: still fits the smallest free tier in the pool, and the real fix is a
+#: provider whose per-minute cap is not 8000.
+DESIGN_MAX_TOKENS = 5000
 
 
 class DesignError(Exception):
@@ -127,11 +139,37 @@ RULES:
 4. "nets" maps a net name to the list of ports on it. Every port of every
    component must appear on exactly one net, and every net must have exactly
    one driver (a pin's port on an input_pin, or a gate's "out").
-5. Use gate primitives only. Do not use a library encoder, decoder,
-   multiplexer or adder: implementing it from gates is the point of the
-   exercise.
+5. {parts_rule}
 6. No JSON outside the object. No markdown fences, no explanation.
+
+SHAPE, exactly. A component carries "ref" and "type" and NOTHING else -- no
+"ports", no "pins", no "connections", no "label". Connections live only in
+"nets", as "REF.portname" strings:
+
+{{"components": [{{"ref": "IN0", "type": "input_pin"}},
+                {{"ref": "G1", "type": "and2"}},
+                {{"ref": "OUT0", "type": "output_pin"}}],
+ "nets": {{"n_in0": ["IN0.pin", "G1.in0"],
+          "n_g1":  ["G1.out", "OUT0.pin"]}}}}
 {retry}"""
+
+#: Rule 5, when the question named no particular part. Building it from gates
+#: IS the exercise, and a library encoder that answers the question in one
+#: component teaches nothing -- the trap the Plexers priority encoder sets.
+PRIMITIVES_RULE = (
+    "Use gate primitives only. Do not use a library encoder, decoder, "
+    "multiplexer or adder: implementing it from gates is the point of the "
+    "exercise.")
+
+#: Rule 5, when the question named a part by number. Answering "use the 7447"
+#: with a pile of gates is answering a neighbouring question -- correct, and
+#: not the one asked.
+NAMED_PARTS_RULE = (
+    "The question asks for {parts} BY NAME, so USE {parts}. Wire the "
+    "question's input signals to its inputs and the question's output "
+    "signals to its outputs. Do not rebuild the part out of gates: the "
+    "question named it, and a gate-level equivalent answers a different "
+    "question. Use gates only for anything the named part does not cover.")
 
 RETRY_BLOCK = """
 YOUR PREVIOUS DESIGN WAS REJECTED:
@@ -155,7 +193,18 @@ def _json_object(text: str, what: str) -> dict:
     if not isinstance(text, str):
         raise DesignError(f"{what}: no text came back")
     start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end <= start:
+    if start != -1 and end <= start:
+        # It began an object and never closed one. Saying "contains no JSON
+        # object" here is true and useless: the reply plainly starts with a
+        # JSON object, and the reader goes looking for a formatting problem
+        # that is not there. MEASURED on the seven-segment question, whose
+        # spec is seven long sum-of-products expressions.
+        raise DesignError(
+            f"{what}: the reply was CUT OFF mid-object -- it started a JSON "
+            f"object and never closed it, which almost always means the "
+            f"token budget ran out before the answer finished. It got as far "
+            f"as: {text.strip()[-200:]!r}")
+    if start == -1:
         raise DesignError(
             f"{what}: the reply contains no JSON object. It said: "
             f"{text.strip()[:300]!r}")
@@ -274,10 +323,19 @@ def build_question_data(question: str, spec: Spec, circuit: dict,
     parallel format for generated questions would drift from the one the
     library publishes, and the library is the product.
     """
+    # primitives_only is OUR constraint, not the question's, and it must not
+    # outlive its reason. It exists because "design a priority encoder" is
+    # answered uselessly by dropping in the Plexers priority encoder. A
+    # question that NAMES a part is the opposite case: refusing the part it
+    # asked for is us overruling the question.
+    #
+    # Found the hard way -- the loop used the 7447 correctly and the gate
+    # rejected it three times running, with a failure the model could not
+    # possibly fix because it was ours.
     return {
         "question": question,
         "target": "logisim",
-        "constraints": {"primitives_only": True},
+        "constraints": {"primitives_only": not named_parts(question)},
         "circuit": circuit,
         "analysis": build_plan(spec),
         "design_notes": [
@@ -406,16 +464,23 @@ def solve(question: str, *, provider=None, backend=None, workdir,
 
     types = type_vocabulary()
 
+    # A question that says "using the 7447-decoder IC" is not asking for an
+    # equivalent built from gates, and a loop that silently gives it one has
+    # answered a neighbouring question.
+    parts = named_parts(question)
+    parts_rule = (NAMED_PARTS_RULE.format(parts=" and ".join(parts))
+                  if parts else PRIMITIVES_RULE)
+
     last_error = None
     history: list = []
     for index in range(1, attempts + 1):
         retry = "" if last_error is None else RETRY_BLOCK.format(error=last_error)
         prompt = DESIGN_PROMPT.format(
-            spec=spec.render(), types=types,
+            spec=spec.render(), types=types, parts_rule=parts_rule,
             inputs=", ".join(spec.inputs), outputs=", ".join(spec.outputs),
             retry=retry)
         emit("attempt", {"index": index, "status": "designing"})
-        reply = provider.complete(prompt, max_tokens=4000)
+        reply = provider.complete(prompt, max_tokens=DESIGN_MAX_TOKENS)
 
         # Provenance comes from the REPLY, never from the provider object. A
         # pool is a provider whose name is "pool" and whose model is a

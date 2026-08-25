@@ -287,3 +287,55 @@ def test_rows_are_canonically_ordered_so_two_files_are_comparable(tmp_path):
     assert inputs_only == sorted(inputs_only)
     assert inputs_only[0] == (0, 0, 0, 0, 0)
     assert inputs_only[-1] == (1, 1, 1, 1, 1)
+
+
+def test_a_DIP_sized_part_does_not_collide_with_the_component_below_it():
+    """The row pitch used to be a constant justified as "> the 40-unit span
+    of a 2-input gate's input pins". A 7447 spans exactly 60, so two of them
+    in a row put a port of one at the same y as a port of the next -- and a
+    horizontal run at that y passes straight through a foreign port.
+
+    validate_wiring caught it on the first BCD question. This pins the fix:
+    rows are stacked from each component's OWN port span, so the argument
+    holds for shapes nobody has measured yet.
+    """
+    circuit = {
+        "components": [
+            {"ref": "A", "type": "input_pin"}, {"ref": "B", "type": "input_pin"},
+            {"ref": "C", "type": "input_pin"}, {"ref": "D", "type": "input_pin"},
+            {"ref": "HI", "type": "input_pin"},
+            {"ref": "U1", "type": "ttl7447"}, {"ref": "U2", "type": "ttl7447"},
+            {"ref": "SA", "type": "output_pin"}, {"ref": "SB", "type": "output_pin"},
+        ],
+        "nets": {
+            "na": ["A.pin", "U1.A", "U2.A"], "nb": ["B.pin", "U1.B", "U2.B"],
+            "nc": ["C.pin", "U1.C", "U2.C"], "nd": ["D.pin", "U1.D", "U2.D"],
+            "nhi": ["HI.pin", "U1.LT", "U1.BI", "U1.RBI",
+                    "U2.LT", "U2.BI", "U2.RBI"],
+            "nqa": ["U1.QA", "SA.pin"], "nqb": ["U2.QA", "SB.pin"],
+            "nu1b": ["U1.QB"], "nu1c": ["U1.QC"], "nu1d": ["U1.QD"],
+            "nu1e": ["U1.QE"], "nu1f": ["U1.QF"], "nu1g": ["U1.QG"],
+            "nu2b": ["U2.QB"], "nu2c": ["U2.QC"], "nu2d": ["U2.QD"],
+            "nu2e": ["U2.QE"], "nu2f": ["U2.QF"], "nu2g": ["U2.QG"],
+        },
+    }
+    # place() is the thing under test; it also runs validate_wiring, which
+    # is what caught the collision in the first place.
+    placements, wires, _ = place(circuit)
+
+    # Recompute every port position from the placement and assert no two
+    # components share a port y -- the property the whole no-shorting
+    # argument rests on.
+    from ohmwork import logisim_symbols
+    from ohmwork.targets import get_target
+
+    target = get_target("logisim")
+    by_ref = {c["ref"]: c for c in circuit["components"]}
+    rows = {}
+    for placement in placements:
+        name, attrs = target.TYPE_MAP[by_ref[placement["ref"]]["type"]]
+        ax, ay = placement["loc"]
+        for port in logisim_symbols.ports_of(name, attrs):
+            rows.setdefault(ay + port.dy, set()).add(placement["ref"])
+    for y, refs in sorted(rows.items()):
+        assert len(refs) == 1, f"y={y} carries ports of {sorted(refs)}"

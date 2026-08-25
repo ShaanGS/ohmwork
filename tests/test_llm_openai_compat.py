@@ -164,6 +164,24 @@ def test_an_empty_completion_is_a_failure_here_not_three_layers_up():
         provider.complete("hi", max_tokens=20)
 
 
+def test_a_request_too_large_to_EVER_fit_is_not_reported_as_a_rate_limit():
+    """Measured on a free Groq account: the per-minute cap counts the prompt
+    AND max_tokens, so an over-budget request is refused with 413 rather than
+    delayed. Calling that a rate limit makes the pool sit out a cooldown and
+    then fail in exactly the same way -- a minute wasted to learn nothing."""
+    body = json.dumps({"error": {"message":
+                                 "Request too large for model X: Limit 8000, "
+                                 "Requested 9113"}})
+    transport = FakeTransport((413, {}, body))
+    provider = make(transport=transport)
+
+    with pytest.raises(llm.LLMError) as caught:
+        provider.complete("hi", max_tokens=8000)
+
+    assert not isinstance(caught.value, llm.RateLimited)
+    assert "Waiting will not help" in str(caught.value)
+
+
 # ------------------------------------------------------------ stale model
 
 

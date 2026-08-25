@@ -237,3 +237,32 @@ def check_spec_has_logic(spec) -> None:
         f"is refused rather than answered: the result would look verified and "
         f"mean nothing. This usually means the question was not a digital "
         f"logic question.\n\n{ANALOG_ADVICE}")
+
+
+#: Question wording -> the component type that answers it. Only parts whose
+#: geometry is MEASURED appear here; a part named in a question but absent
+#: from the pin table is refused by check_digital above, not silently
+#: substituted with something else.
+PART_WORDS = {
+    "7447": "ttl7447",
+    "74ls47": "ttl7447",
+    "seven-segment": "seven_segment",
+    "seven segment": "seven_segment",
+    "7-segment": "seven_segment",
+    "7segment": "seven_segment",
+}
+
+
+def named_parts(question: str) -> list[str]:
+    """Component types the question explicitly asks for.
+
+    A question that says "using the 7447-decoder IC" is not asking for an
+    equivalent built from gates. Answering it with gates would be answering a
+    neighbouring question -- correct, and not what was asked.
+    """
+    found = []
+    for word, type_name in PART_WORDS.items():
+        if re.search(rf"\b{re.escape(word)}\b", question, re.IGNORECASE):
+            if type_name not in found:
+                found.append(type_name)
+    return found

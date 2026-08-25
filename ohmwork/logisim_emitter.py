@@ -29,10 +29,17 @@ THE TWO ROUTING HAZARDS, both consequences of Logisim connecting by geometry:
 HOW THE LAYOUT MAKES HAZARD 2 STRUCTURALLY IMPOSSIBLE, rather than merely
 checked:
 
-- **Every component gets its own row.** Anchors are ROW_PITCH apart globally,
-  not per column, and ROW_PITCH exceeds the 40-unit span of a gate's input
-  pins, so no two components share a port y. A horizontal run therefore sits
-  at a y no foreign port occupies and cannot pass through one.
+- **Every component gets its own row**, and the row is as tall as the
+  component needs. Rows are stacked from each component's OWN port span
+  rather than by a fixed pitch, so no two components share a port y and a
+  horizontal run sits at a y no foreign port occupies.
+
+  This used to be a constant, ROW_PITCH = 60, justified as "> the 40-unit
+  span of a 2-input gate's input pins". That reasoning was sound and the
+  constant was a trap: a 7447 spans exactly 60, so consecutive DIPs put a
+  port of one at the same y as a port of the next. `validate_wiring` caught
+  it on the first BCD question -- the argument for the layout had quietly
+  stopped being true while the layout still looked deliberate.
 - **Every net gets its own vertical channel**, in the gap immediately right
   of its source's column. Channels sit strictly inside gaps, never at a
   column's x, so a vertical cannot pass through a port either. Distinct
@@ -50,7 +57,7 @@ from pathlib import Path
 from ohmwork import logisim_symbols
 from ohmwork.targets import LogisimTarget
 
-ROW_PITCH = 60          # > the 40-unit span of a 2-input gate's input pins
+ROW_GAP = 20            # clear space between one component's ports and the next's
 COLUMN_GAP = 20         # minimum clear space either side of a channel band
 ORIGIN = (100, 100)
 
@@ -153,11 +160,36 @@ def place(circuit):
     # the start of the gap. Getting that wrong put the band on top of the
     # 4-input OR's input ports at x=190 and shorted two data inputs — caught
     # by validate_wiring, which is what it is for.
+    # How far each component's ports reach from its anchor. Read from the
+    # measured table rather than assumed: a gate's inputs sit 50 to the LEFT
+    # of its anchor, while a 7447's pins are all to the RIGHT of one and
+    # reach 150 out. A column width computed for gates puts the next
+    # column's channel band straight through a DIP's pins.
+    def extent(comp):
+        name, attrs = target.TYPE_MAP[comp["type"]]
+        offsets = logisim_symbols.ports_of(name, attrs)
+        return (min(p.dx for p in offsets), max(p.dx for p in offsets),
+                min(p.dy for p in offsets), max(p.dy for p in offsets))
+
+    reach = {c["ref"]: extent(c) for c in components}
+    in_column = {}
+    for c in components:
+        in_column.setdefault(depth[c["ref"]], []).append(c["ref"])
+
+    def right_of(d):
+        return max((reach[ref][1] for ref in in_column.get(d, [])), default=0)
+
+    def left_of(d):
+        return min((reach[ref][0] for ref in in_column.get(d, [])), default=0)
+
     column_x, x = {}, ORIGIN[0]
     for d in range(last + 1):
         column_x[d] = x
         channels = len(per_depth.get(d, []))
-        x += COLUMN_GAP + 10 * channels + COLUMN_GAP + 50
+        # this column's widest body, then the channel band, then whatever the
+        # NEXT column's leftmost port sticks out to the left of its anchor.
+        x += (right_of(d) + COLUMN_GAP + 10 * channels + COLUMN_GAP
+              - min(0, left_of(d + 1)))
 
     channel_x = {}
     for d, net_list in per_depth.items():
@@ -167,8 +199,16 @@ def place(circuit):
     # ONE ROW PER COMPONENT, globally. Wasteful and deliberate: it is what
     # makes a horizontal run unable to pass through a foreign port.
     order = sorted(components, key=lambda c: (depth[c["ref"]], c["ref"]))
-    anchor = {c["ref"]: (column_x[depth[c["ref"]]], ORIGIN[1] + i * ROW_PITCH)
-              for i, c in enumerate(order)}
+
+    # Stack the rows from each component's OWN port span, so the band a
+    # component occupies is exactly as tall as it needs and no two
+    # components can share a port y whatever shapes are in the circuit.
+    anchor, y = {}, ORIGIN[1]
+    for c in order:
+        _, _, top, bottom = reach[c["ref"]]
+        anchor_y = y - top
+        anchor[c["ref"]] = (column_x[depth[c["ref"]]], anchor_y)
+        y = anchor_y + bottom + ROW_GAP
 
     placements = [
         {"ref": c["ref"], "type": c["type"],

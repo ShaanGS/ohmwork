@@ -292,8 +292,20 @@ class GroqProvider:
         # pool moves to the next member on this and disables a member on
         # anything else. Reporting it as an ordinary error would have it
         # retire a perfectly healthy account.
+        lowered = text.lower()
+        # A request that does not FIT is not a request that is early. Waiting
+        # cannot help: the per-minute cap counts prompt plus max_tokens, so
+        # the same request will be refused again in a minute and in an hour.
+        # It must not be classified as a rate limit, or the pool sits out a
+        # cooldown and then fails identically.
+        if getattr(error, "status_code", None) == 413 or                 "request too large" in lowered:
+            return LLMError(
+                f"{self.name}/{self.model} cannot fit this request at all: "
+                f"its per-minute token cap counts the prompt AND max_tokens. "
+                f"Waiting will not help; a provider with a larger cap will. "
+                f"{text}")
         if getattr(error, "status_code", None) == 429 or any(
-                phrase in text.lower()
+                phrase in lowered
                 for phrase in ("rate limit", "too many requests")):
             return RateLimited(f"Groq is rate limiting: {text}",
                                retry_after=_retry_after({}, text))
@@ -408,10 +420,15 @@ SIGNUP_URL = {
 #: Non-obvious key variable names go here; everything else is <NAME>_API_KEY.
 ENV_VAR = {"gemini": "GEMINI_API_KEY"}
 
+# CONFIRMED against real accounts on 2026-08-26 with `--list-models`, not
+# recalled. The first guesses here were wrong in exactly the way this module
+# predicts they will be: Cerebras served neither llama-3.3-70b nor anything
+# resembling it, and OpenRouter's free tier had rotated its whole list. That
+# is the failure `--list-models` exists for, and it took one command.
 DEFAULT_MODEL.update({
-    "cerebras": "llama-3.3-70b",
+    "cerebras": "gpt-oss-120b",
     "gemini": "gemini-2.5-flash",
-    "openrouter": "meta-llama/llama-3.3-70b-instruct:free",
+    "openrouter": "z-ai/glm-5.2:free",
     "mistral": "mistral-large-latest",
 })
 
@@ -613,6 +630,12 @@ class OpenAICompatibleProvider:
 
     def _explain(self, status: int, headers: dict, text: str) -> LLMError:
         """Turn an HTTP status into the thing to do about it."""
+        if status == 413 or "request too large" in text.lower():
+            return LLMError(
+                f"{self.name}/{self.model} cannot fit this request at all: "
+                f"its per-minute token cap counts the prompt AND max_tokens. "
+                f"Waiting will not help; a provider with a larger cap will. "
+                f"{text[:200]}")
         if status == 429:
             return RateLimited(f"{self.name} is rate limiting: {text[:200]}",
                                retry_after=_retry_after(headers, text))
