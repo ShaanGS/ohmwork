@@ -46,6 +46,13 @@ from ohmwork.spec import Spec, SpecError, compare_tables, evaluate_spec
 #: each attempt costs money and rate limit.
 DEFAULT_ATTEMPTS = 4
 
+#: The spec call's budget. MEASURED, not guessed: at 1500 a reasoning model
+#: given the four-sentence 7447 question spent the entire budget thinking and
+#: returned an empty string. The budget counts toward a free tier's
+#: per-minute limit, so it is not set higher than it needs to be -- but a
+#: number chosen to save tokens that produces no answer saves nothing.
+SPEC_MAX_TOKENS = 3000
+
 
 class DesignError(Exception):
     """No verified circuit was produced.
@@ -386,7 +393,7 @@ def solve(question: str, *, provider=None, backend=None, workdir,
 
     spec = parse_spec_reply(
         provider.complete(SPEC_PROMPT.format(question=question),
-                          max_tokens=1500).text)
+                          max_tokens=SPEC_MAX_TOKENS).text)
     # LAYER 3: a spec with no logic in it verifies perfectly and means
     # nothing. Checked BEFORE the reading is emitted, so a refused question
     # never renders a reading that looks like the start of an answer.

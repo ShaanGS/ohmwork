@@ -69,6 +69,44 @@ ANALOG_QUANTITY = re.compile(
 #: Micro sign in either encoding people actually paste, plus the Greek mu.
 _MICRO = re.compile(r"[µμ]\s*(?:F|H|A)\b", re.IGNORECASE)
 
+#: Sequential logic. The loop builds COMBINATIONAL circuits and verifies them
+#: with an exhaustive truth table, which is only meaningful when the outputs
+#: depend on nothing but the present inputs. A counter has state; its "truth
+#: table" is not a function of its inputs, and the comparison the whole loop
+#: rests on has no meaning. Found while writing this file: a 4-bit counter
+#: question was in the test set as an example that should PASS.
+SEQUENTIAL_WORDS = (
+    "counter", "flip-flop", "flipflop", "flip flop", "latch", "register",
+    "shift register", "state machine", "sequence detector", "clock",
+    "clocked", "synchronous", "asynchronous", "memory", "ram", "rom",
+    "edge-triggered", "d flip", "jk", "t flip", "debounce", "one-shot",
+)
+
+SEQUENTIAL_ADVICE = (
+    "This loop builds COMBINATIONAL logic and checks it with an exhaustive "
+    "truth table. A circuit with state does not have one -- its outputs "
+    "depend on what happened before, not only on the present inputs -- so "
+    "there is nothing here that could honestly verify it."
+)
+
+#: Parts whose geometry this project has never measured from a real file.
+#: The pin table refuses anything unmeasured (see logisim_symbols), so a
+#: question naming one of these cannot be built at all -- and the reason is
+#: worth saying out loud, because it is a missing MEASUREMENT, not a missing
+#: feature.
+UNMEASURED_PARTS = (
+    "7447", "7448", "7segment", "seven-segment", "seven segment",
+    "7-segment", "74ls47", "74ls48", "display", "multiplexer ic", "74ls",
+)
+
+UNMEASURED_ADVICE = (
+    "Every component this tool can place had its pin geometry MEASURED from "
+    "a real file, and it refuses to guess at one it has never seen. The 7447 "
+    "and the seven-segment display live in Logisim Evolution's TTL and I/O "
+    "libraries, and no file containing them has ever been measured here -- "
+    "so the circuit could be drawn, but every wire on it would be a guess."
+)
+
 ANALOG_ADVICE = (
     "This endpoint answers DIGITAL logic questions only, because the only "
     "simulator it can run on a server is Logisim. Analog questions are not "
@@ -123,8 +161,34 @@ def names_a_simulator(question: str) -> str | None:
     return None
 
 
+def _found(question: str, words) -> list[str]:
+    hits = []
+    for word in words:
+        match = re.search(rf"\b{re.escape(word)}\b", question, re.IGNORECASE)
+        if match:
+            hits.append((match.start(), match.group(0)))
+    return [text for _, text in sorted(hits)]
+
+
 def check_digital(question: str) -> None:
-    """Refuse an analog question before a single token is spent on it."""
+    """Refuse a question this loop cannot honestly answer, before spending
+    anything on it. Three families, each with its own reason."""
+    # Unmeasured parts first: a question naming the 7447 is a question about
+    # THAT part, and telling someone their question is "analog" or
+    # "sequential" would be answering a different objection than the real one.
+    parts = _found(question, UNMEASURED_PARTS)
+    if parts:
+        raise DomainError(
+            f"This question is built around a part this tool has never "
+            f"measured: {', '.join(parts)}.\n\n{UNMEASURED_ADVICE}")
+
+    stateful = _found(question, SEQUENTIAL_WORDS)
+    if stateful:
+        raise DomainError(
+            f"This reads as a SEQUENTIAL circuit -- one with state.\n\n"
+            f"What the question says: {', '.join(stateful[:6])}\n\n"
+            f"{SEQUENTIAL_ADVICE}")
+
     simulator = names_a_simulator(question)
     evidence = analog_evidence(question)
 

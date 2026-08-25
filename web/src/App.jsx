@@ -1,14 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
+import {
+  ArrowUp, Check, CircleAlert, Download, Loader2, TriangleAlert, Waves,
+} from 'lucide-react'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 
 /*
- * The screen is arranged around one claim: the answer below was checked by an
- * outside tool, and here is what it was checked AGAINST.
+ * Chat-shaped, on stock shadcn/ui components.
  *
- * So the reading comes first and is the loudest thing on the page, the
- * rejected designs are shown rather than hidden, and the verified badge names
- * the evaluator. None of that is decoration -- each one is a place this
- * project can be wrong in a way that would otherwise look exactly like being
- * right.
+ * The layout argues one claim: the answer below was checked by an outside
+ * tool, and here is what it was checked AGAINST. So the reading comes first
+ * and is the loudest thing on the page, every rejected design is shown
+ * rather than hidden, and the verified badge names the evaluator. Each of
+ * those is a place this project can be wrong in a way that would otherwise
+ * look exactly like being right.
  */
 
 const EXAMPLES = [
@@ -43,18 +56,25 @@ export default function App() {
   const [authorised, setAuthorised] = useState(null)
 
   useEffect(() => {
+    document.documentElement.classList.add('dark')
     fetch('/api/session')
       .then((r) => r.json())
       .then((body) => setAuthorised(body.authorised))
       .catch(() => setAuthorised(false))
   }, [])
 
-  if (authorised === null) return <div className="paper h-full" />
+  if (authorised === null) return <div className="h-full bg-background" />
+  return authorised
+    ? <Solver onExpired={() => setAuthorised(false)} />
+    : <Login onIn={() => setAuthorised(true)} />
+}
+
+function Wordmark({ className = '' }) {
   return (
-    <div className="paper flex h-full flex-col">
-      {authorised ? <Solver onExpired={() => setAuthorised(false)} />
-                  : <Login onIn={() => setAuthorised(true)} />}
-    </div>
+    <span className={`inline-flex items-center gap-2 font-medium ${className}`}>
+      <Waves className="size-4 text-verified" strokeWidth={2.5} />
+      ohmwork
+    </span>
   )
 }
 
@@ -74,58 +94,42 @@ function Login({ onIn }) {
     })
     setBusy(false)
     if (response.ok) onIn()
-    else if (response.status === 429) setError('too many attempts. wait it out.')
+    else if (response.status === 429) setError('too many attempts — wait it out')
     else setError('wrong password')
   }
 
   return (
-    <main className="relative z-10 flex flex-1 items-center justify-center px-6">
-      <form onSubmit={submit} className="rise w-full max-w-sm">
-        <Wordmark />
-        <p className="mt-3 text-sm text-ink-400">
-          A lab question in. A circuit file and an answer a simulator checked, out.
-        </p>
-        <input
-          type="password"
-          autoFocus
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="passphrase"
-          className="mt-6 w-full rounded-lg border border-ink-800 bg-ink-900/70 px-4 py-3
-                     font-mono text-sm text-ink-200 placeholder:text-ink-700
-                     transition focus:border-signal-dim"
-        />
-        <button
-          disabled={busy || !password}
-          className="mt-3 w-full rounded-lg bg-signal px-4 py-3 text-sm font-medium
-                     text-ink-950 transition hover:brightness-110
-                     disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {busy ? 'checking…' : 'enter'}
-        </button>
-        {error && <p className="mt-3 text-center text-sm text-fault">{error}</p>}
-      </form>
-    </main>
-  )
-}
-
-function Wordmark({ small = false }) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <svg width={small ? 20 : 26} height={small ? 20 : 26} viewBox="0 0 24 24" fill="none"
-           className="text-signal" aria-hidden>
-        <path d="M2 12h3.5l2-5 3 10 3-8 2 3H22" stroke="currentColor" strokeWidth="1.6"
-              strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <span className={`font-mono tracking-tight text-ink-200 ${small ? 'text-base' : 'text-2xl'}`}>
-        ohmwork
-      </span>
+    <div className="flex h-full items-center justify-center p-6">
+      <Card className="w-full max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <CardContent className="space-y-4">
+          <Wordmark className="text-lg" />
+          <p className="text-sm text-muted-foreground">
+            A lab question in. A circuit file and an answer a simulator
+            checked, out.
+          </p>
+          <form onSubmit={submit} className="space-y-3">
+            <Input
+              type="password"
+              autoFocus
+              placeholder="passphrase"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <Button type="submit" className="w-full" disabled={busy || !password}>
+              {busy && <Loader2 className="animate-spin" />}
+              {busy ? 'checking' : 'enter'}
+            </Button>
+          </form>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
 function Solver({ onExpired }) {
   const [question, setQuestion] = useState('')
+  const [asked, setAsked] = useState(null)
   const [running, setRunning] = useState(false)
   const [reading, setReading] = useState(null)
   const [attempts, setAttempts] = useState([])
@@ -136,12 +140,14 @@ function Solver({ onExpired }) {
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [reading, attempts, verified, refused, error])
+  }, [asked, reading, attempts, verified, refused, error])
 
   async function run() {
     const text = question.trim()
     if (!text || running) return
     setRunning(true)
+    setAsked(text)
+    setQuestion('')
     setReading(null)
     setAttempts([])
     setVerified(null)
@@ -171,10 +177,9 @@ function Solver({ onExpired }) {
     for await (const [name, data] of sseStream(response)) {
       if (name === 'reading') setReading(data)
       else if (name === 'attempt') {
-        setAttempts((previous) => {
-          const rest = previous.filter((a) => a.index !== data.index)
-          return [...rest, data].sort((a, b) => a.index - b.index)
-        })
+        setAttempts((previous) => [
+          ...previous.filter((a) => a.index !== data.index), data,
+        ].sort((a, b) => a.index - b.index))
       } else if (name === 'verified') setVerified(data)
       else if (name === 'refused') setRefused(data)
       else if (name === 'error') setError(data)
@@ -182,56 +187,30 @@ function Solver({ onExpired }) {
     setRunning(false)
   }
 
-  const idle = !running && !reading && !verified && !error && !refused
-
   return (
-    <>
-      <header className="relative z-10 flex items-center justify-between border-b
-                         border-ink-850/70 px-5 py-3.5">
-        <Wordmark small />
-        <span className="font-mono text-[11px] text-ink-700">
+    <div className="flex h-full flex-col bg-background">
+      <header className="flex items-center justify-between border-b px-4 py-3">
+        <Wordmark className="text-sm" />
+        <Badge variant="outline" className="text-muted-foreground">
           digital · logisim evolution
-        </span>
+        </Badge>
       </header>
 
-      <main className="relative z-10 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-5 py-8">
-          {idle && <Intro onPick={setQuestion} />}
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
+          {!asked && <Intro onPick={setQuestion} />}
 
+          {asked && <Asked text={asked} />}
           {refused && <Refused refused={refused} />}
+          {reading && <Reading reading={reading} />}
 
-          {(running || reading) && !refused && (
-            <Step done={!!reading} label="reading the question">
-              {reading && <Reading reading={reading} />}
-            </Step>
-          )}
-
-          {attempts.map((attempt) => {
-            const rejected = attempt.status === 'rejected'
-            // An attempt that was never rejected is the one that WORKED.
-            // Leaving it labelled "design attempt 1" with nothing underneath
-            // reads as a step that never finished.
-            const accepted = !rejected && !!verified
-            return (
-              <Step
-                key={attempt.index}
-                done={rejected || accepted}
-                failed={rejected}
-                label={`design attempt ${attempt.index}`}
-              >
-                <p className="font-mono text-xs leading-relaxed text-ink-400">
-                  {rejected
-                    ? `rejected — ${attempt.failure.split('\n')[0]}`
-                    : accepted
-                      ? 'emitted, and handed to the evaluator'
-                      : 'designing…'}
-                </p>
-              </Step>
-            )
-          })}
+          {attempts.map((attempt) => (
+            <Attempt key={attempt.index} attempt={attempt} settled={!!verified} />
+          ))}
 
           {verified && <Verified verified={verified} />}
           {error && <Failed error={error} />}
+          {running && !verified && !error && !refused && <Working />}
           <div ref={bottom} />
         </div>
       </main>
@@ -242,18 +221,20 @@ function Solver({ onExpired }) {
         onRun={run}
         running={running}
       />
-    </>
+    </div>
   )
 }
 
 function Intro({ onPick }) {
   return (
-    <div className="rise">
-      <h1 className="text-xl text-ink-200">Ask a digital logic question.</h1>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-400">
+    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <h1 className="text-2xl font-medium tracking-tight">
+        Ask a digital logic question.
+      </h1>
+      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
         You get a Logisim circuit file and its truth table. The circuit is
-        designed, emitted as a real <span className="font-mono">.circ</span>, and
-        that file is handed to Logisim Evolution to evaluate. If Logisim
+        designed, emitted as a real <code className="text-foreground">.circ</code>,
+        and that file is handed to Logisim Evolution to evaluate. If Logisim
         disagrees with the specification, the design is thrown away and redone —
         so nothing reaches you unchecked.
       </p>
@@ -262,223 +243,264 @@ function Intro({ onPick }) {
           <button
             key={example}
             onClick={() => onPick(example)}
-            className="block w-full rounded-lg border border-ink-850 bg-ink-900/40
-                       px-4 py-3 text-left text-sm text-ink-400 transition
-                       hover:border-ink-800 hover:bg-ink-900/80 hover:text-ink-200"
+            className="block w-full rounded-lg border bg-card p-3 text-left text-sm
+                       text-muted-foreground transition-colors hover:bg-accent
+                       hover:text-accent-foreground"
           >
             {example}
           </button>
         ))}
       </div>
-      <p className="mt-6 text-xs text-ink-700">
-        Analog questions (LTspice) are not served here: LTspice is a Windows
-        application and this server cannot run it, so an analog answer from here
-        could only ever be unverified. Those stay on the command line.
+      <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
+        Analog questions (LTspice) are answered on the command line, not here:
+        LTspice is a Windows application and this server cannot run it, so an
+        analog answer from here could only ever be unverified. Sequential
+        circuits and parts whose pin geometry has never been measured are
+        refused for their own reasons, and the refusal says which.
       </p>
     </div>
   )
 }
 
-function Step({ label, done, failed, children }) {
+function Asked({ text }) {
   return (
-    <div className="rise mb-5 flex gap-3.5">
-      <div className="mt-1.5 flex flex-col items-center">
-        <span
-          className={`h-2 w-2 rounded-full ${
-            failed ? 'bg-warn' : done ? 'bg-signal' : 'bg-ink-700 working'
-          }`}
-        />
-        <span className="mt-1 w-px flex-1 bg-ink-850" />
+    <div className="flex justify-end animate-in fade-in slide-in-from-bottom-2">
+      <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5
+                      text-sm text-primary-foreground">
+        {text}
       </div>
-      <div className="min-w-0 flex-1 pb-1">
-        <p className="font-mono text-[11px] uppercase tracking-wider text-ink-700">
-          {label}
-        </p>
-        <div className="mt-1.5">{children}</div>
-      </div>
+    </div>
+  )
+}
+
+function Working() {
+  return (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground
+                    animate-in fade-in">
+      <Loader2 className="size-3.5 animate-spin" />
+      working — a solve takes a minute
     </div>
   )
 }
 
 function Reading({ reading }) {
   return (
-    <div className="rounded-lg border border-warn/25 bg-warn/[0.04] p-4">
-      <pre className="overflow-x-auto font-mono text-[13px] leading-relaxed text-ink-200">
+    <Card className="border-caution/40 bg-caution/5 animate-in fade-in
+                     slide-in-from-bottom-2">
+      <CardContent className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wider text-caution">
+          the reading
+        </p>
+        <pre className="overflow-x-auto font-mono text-[13px] leading-relaxed">
 {reading.spec}
-      </pre>
-      {/* The notes are NOT listed again here: spec.render() already prints
-          them, and the first rendered page showed every note twice on the
-          one card a person is asked to read carefully. */}
-      <p className="mt-3 border-t border-warn/15 pt-3 text-xs leading-relaxed text-warn/90">
-        Read this. Everything below is checked against it, not against your
-        question — a misreading here passes every check that follows.
-      </p>
+        </pre>
+        <Separator className="bg-caution/20" />
+        <p className="text-xs leading-relaxed text-caution/90">
+          Read this. Everything below is checked against it, not against your
+          question — a misreading here passes every check that follows.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function Attempt({ attempt, settled }) {
+  const rejected = attempt.status === 'rejected'
+  const accepted = !rejected && settled
+  return (
+    <div className="flex gap-2.5 text-sm animate-in fade-in slide-in-from-bottom-1">
+      <span className="mt-0.5 shrink-0">
+        {rejected
+          ? <TriangleAlert className="size-4 text-caution" />
+          : accepted
+            ? <Check className="size-4 text-verified" />
+            : <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+      </span>
+      <div className="min-w-0">
+        <span className="text-muted-foreground">
+          design attempt {attempt.index}
+        </span>
+        <p className="mt-0.5 font-mono text-xs leading-relaxed text-muted-foreground">
+          {rejected
+            ? `rejected — ${attempt.failure.split('\n')[0]}`
+            : accepted
+              ? 'emitted, and handed to the evaluator'
+              : 'designing…'}
+        </p>
+      </div>
     </div>
   )
 }
 
 function Verified({ verified }) {
   const inputs = verified.input_count
+  const external = verified.verification === 'external'
   return (
-    <div className="rise mb-6 rounded-xl border border-signal/25 bg-signal/[0.04] p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-signal">
-            <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.4"
-                  strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="text-sm text-signal">
-            verified in {verified.attempts} attempt{verified.attempts === 1 ? '' : 's'}
+    <Card className="border-verified/40 bg-verified/5 animate-in fade-in
+                     slide-in-from-bottom-2 duration-500">
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-sm text-verified">
+            <Check className="size-4" strokeWidth={3} />
+            verified in {verified.attempts} attempt
+            {verified.attempts === 1 ? '' : 's'}
           </span>
+          <Button asChild size="sm">
+            <a href={`/api/circuit/${verified.download}`}>
+              <Download /> download .circ
+            </a>
+          </Button>
         </div>
-        <a
-          href={`/api/circuit/${verified.download}`}
-          className="rounded-lg bg-signal px-3.5 py-2 text-xs font-medium text-ink-950
-                     transition hover:brightness-110"
-        >
-          download .circ
-        </a>
-      </div>
 
-      <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 border-t border-signal/15
-                     pt-4 text-xs sm:grid-cols-2">
-        <Fact label="checked by">{verified.evaluator}</Fact>
-        <Fact label="verification">
-          {verified.verification === 'external'
-            ? 'external — an outside tool computed this'
-            : 'INTERNAL — our own evaluator, unchecked by anything else'}
-        </Fact>
-        <Fact label="agreement">{verified.summary.split('\n')[0]}</Fact>
-        <Fact label="designed by">{verified.designed_by}</Fact>
-      </dl>
+        <Separator className="bg-verified/20" />
 
-      <div className="mt-5 overflow-x-auto">
-        <table className="w-full border-collapse font-mono text-[13px]">
-          <thead>
-            <tr>
-              {verified.columns.map((column, index) => (
-                <th
-                  key={column}
-                  className={`px-3 py-1.5 text-right font-normal text-ink-700 ${
-                    index === inputs ? 'border-l border-ink-800' : ''
-                  }`}
-                >
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {verified.rows.map((row, r) => (
-              <tr key={r} className="border-t border-ink-850/60">
-                {row.map((bit, index) => (
-                  <td
-                    key={index}
-                    className={`px-3 py-1 text-right tabular-nums ${
-                      index === inputs ? 'border-l border-ink-800' : ''
-                    } ${
-                      index >= inputs
-                        ? bit ? 'text-signal' : 'text-ink-700'
-                        : 'text-ink-400'
-                    }`}
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
+          <Fact label="checked by">{verified.evaluator}</Fact>
+          <Fact label="verification">
+            {external
+              ? 'external — an outside tool computed this'
+              : 'INTERNAL — our own evaluator, unchecked by anything else'}
+          </Fact>
+          <Fact label="agreement">{verified.summary.split('\n')[0]}</Fact>
+          <Fact label="designed by">{verified.designed_by}</Fact>
+        </dl>
+
+        <div className="overflow-x-auto rounded-lg border">
+          <Table className="font-mono text-[13px]">
+            <TableHeader>
+              <TableRow>
+                {verified.columns.map((column, index) => (
+                  <TableHead
+                    key={column}
+                    className={`text-right ${index === inputs ? 'border-l' : ''}`}
                   >
-                    {bit}
-                  </td>
+                    {column}
+                  </TableHead>
                 ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {verified.rows.map((row, r) => (
+                <TableRow key={r}>
+                  {row.map((bit, index) => (
+                    <TableCell
+                      key={index}
+                      className={`text-right tabular-nums ${
+                        index === inputs ? 'border-l' : ''
+                      } ${
+                        index >= inputs
+                          ? bit ? 'text-verified' : 'text-muted-foreground'
+                          : ''
+                      }`}
+                    >
+                      {bit}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
 
-      <p className="mt-4 text-xs leading-relaxed text-ink-700">
-        The layout inside the file is generated mechanically — inputs in a left
-        column, gates in columns by logic depth. Correct, not pretty.
-      </p>
-    </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          The layout inside the file is generated mechanically — inputs in a
+          left column, gates in columns by logic depth. Correct, not pretty.
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
 function Fact({ label, children }) {
   return (
     <div className="flex gap-2">
-      <dt className="shrink-0 text-ink-700">{label}</dt>
-      <dd className="min-w-0 break-words text-ink-400">{children}</dd>
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
     </div>
   )
 }
 
 function Refused({ refused }) {
-  // The message is written as paragraphs: what was refused, the evidence,
-  // and finally what to do instead. The last one is the advice.
+  // The message is written as paragraphs: what was refused, the evidence, and
+  // finally what to do instead. The last one is the advice.
   const paragraphs = refused.message.split('\n\n')
   const advice = paragraphs[paragraphs.length - 1]
   const rest = paragraphs.slice(0, -1)
   return (
-    <div className="rise mb-6 rounded-xl border border-warn/30 bg-warn/[0.05] p-5">
-      <p className="text-sm text-warn">not a question this can answer</p>
-      {rest.map((paragraph) => (
-        <p key={paragraph} className="mt-2 text-sm leading-relaxed text-ink-200">
-          {paragraph}
+    <Card className="border-caution/40 bg-caution/5 animate-in fade-in
+                     slide-in-from-bottom-2">
+      <CardContent className="space-y-3">
+        <p className="flex items-center gap-2 text-sm text-caution">
+          <CircleAlert className="size-4" />
+          not a question this can answer
         </p>
-      ))}
-      <p className="mt-3 border-t border-warn/15 pt-3 text-xs leading-relaxed text-ink-400">
-        {advice}
-      </p>
-    </div>
+        {rest.map((paragraph) => (
+          <p key={paragraph} className="text-sm leading-relaxed">{paragraph}</p>
+        ))}
+        <Separator className="bg-caution/20" />
+        <p className="text-xs leading-relaxed text-muted-foreground">{advice}</p>
+      </CardContent>
+    </Card>
   )
 }
 
-
 function Failed({ error }) {
   return (
-    <div className="rise mb-6 rounded-xl border border-fault/30 bg-fault/[0.05] p-5">
-      <p className="text-sm text-fault">no verified circuit</p>
-      <pre className="mt-2 overflow-x-auto whitespace-pre-wrap font-mono text-xs
-                      leading-relaxed text-ink-400">
+    <Card className="border-destructive/40 bg-destructive/5 animate-in fade-in
+                     slide-in-from-bottom-2">
+      <CardContent className="space-y-3">
+        <p className="flex items-center gap-2 text-sm text-destructive">
+          <CircleAlert className="size-4" />
+          no verified circuit
+        </p>
+        <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-xs
+                        leading-relaxed text-muted-foreground">
 {error.message}
-      </pre>
-      <p className="mt-3 text-xs leading-relaxed text-ink-700">
-        Nothing is returned when the evaluator disagrees. A circuit that failed
-        its own specification is worse than no circuit, because it looks like an
-        answer.
-      </p>
-    </div>
+        </pre>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Nothing is returned when the evaluator disagrees. A circuit that
+          failed its own specification is worse than no circuit, because it
+          looks like an answer.
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
 function Composer({ question, setQuestion, onRun, running }) {
   function onKeyDown(event) {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) onRun()
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      onRun()
+    }
   }
 
   return (
-    <div className="relative z-10 border-t border-ink-850/70 bg-ink-950/80 backdrop-blur">
-      <div className="mx-auto w-full max-w-3xl px-5 py-4">
-        <div className="rounded-xl border border-ink-800 bg-ink-900/70 p-2
-                        transition focus-within:border-signal-dim">
-          <textarea
+    <div className="border-t bg-background/80 backdrop-blur">
+      <div className="mx-auto w-full max-w-3xl px-4 py-4">
+        <div className="relative rounded-2xl border bg-card p-2
+                        focus-within:ring-1 focus-within:ring-ring">
+          <Textarea
             rows={2}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Design a 4-to-2 priority encoder with an enable input and a valid output…"
-            className="w-full resize-none bg-transparent px-3 py-2 text-sm
-                       text-ink-200 placeholder:text-ink-700 focus:outline-none"
+            className="min-h-16 resize-none border-0 bg-transparent px-2 py-1.5
+                       shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
-          <div className="flex items-center justify-between px-3 pb-1">
-            <span className="font-mono text-[11px] text-ink-700">
-              {running ? 'working — this takes a minute' : 'ctrl + enter'}
+          <div className="flex items-center justify-between px-2 pb-0.5">
+            <span className="text-xs text-muted-foreground">
+              {running ? 'working…' : 'enter to send · shift + enter for a new line'}
             </span>
-            <button
+            <Button
+              size="icon"
+              className="size-8 rounded-full"
               onClick={onRun}
               disabled={running || !question.trim()}
-              className="rounded-lg bg-signal px-4 py-2 text-xs font-medium text-ink-950
-                         transition hover:brightness-110 disabled:cursor-not-allowed
-                         disabled:opacity-30"
             >
-              {running ? 'solving…' : 'solve'}
-            </button>
+              {running ? <Loader2 className="animate-spin" /> : <ArrowUp />}
+            </Button>
           </div>
         </div>
       </div>

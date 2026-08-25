@@ -63,8 +63,23 @@ DIGITAL = [
     "Design a circuit that outputs 1 when exactly two of its three inputs "
     "are high.",
     "Implement a full adder using only NOT, AND and OR gates.",
-    "Design a BCD to seven-segment decoder and identify the invalid codes.",
+    "Design a 4-bit even parity generator.",
 ]
+
+# The real Q4, verbatim from the lab manual. It is a DIGITAL question and it
+# is still refused, for a reason that has nothing to do with analog: the 7447
+# and the seven-segment display live in Logisim Evolution's TTL and I/O
+# libraries, and no file containing them has ever been measured here. The pin
+# table refuses anything unmeasured, so the circuit could be drawn but every
+# wire on it would be a guess.
+Q4 = (
+    "Using Logisim Evolution, design a BCD-to-seven-segment display circuit "
+    "using the 7447-decoder IC. Connect the decoder outputs to a "
+    "seven-segment display and test all 16 possible 4-bit input "
+    "combinations. Record the segment pattern displayed for each input and "
+    "identify which codes correspond to valid BCD digits (0-9) and which "
+    "correspond to invalid BCD codes (10-15)."
+)
 
 
 # ------------------------------------------------ layer 1: the screen
@@ -111,7 +126,56 @@ def test_one_incidental_analog_word_does_not_refuse_a_digital_question():
     digital questions, and a screen that fires on it would refuse more real
     questions than fake ones."""
     domain.check_digital(
-        "Design a 4-bit binary counter that runs from a 5 V supply.")
+        "Design a 3-input majority circuit that runs from a 5 V supply.")
+
+
+# ------------------------------- the other two things it cannot answer
+#
+# Both found by the owner typing the real Q4 into the box, and both were
+# hiding behind a broken word matcher: `\b` had been mangled into a literal
+# backspace character, so every one of these lookups silently matched
+# nothing. The screen reported "clean" because it was blind, which is this
+# project's oldest failure shape wearing a new hat.
+
+
+def test_a_sequential_circuit_is_refused_because_a_truth_table_cannot_check_it():
+    """A counter has state. Its outputs are not a function of its present
+    inputs, so the exhaustive-table comparison the entire loop rests on has
+    nothing to compare -- and this test file previously listed a counter as a
+    question that SHOULD pass.
+    """
+    with pytest.raises(domain.DomainError, match="SEQUENTIAL"):
+        domain.check_digital("Design a 4-bit binary counter with a clock.")
+
+    message = str(pytest.raises(
+        domain.DomainError,
+        domain.check_digital,
+        "Design a D flip-flop based shift register.").value)
+    assert "truth table" in message
+
+
+def test_the_real_Q4_is_refused_for_the_PART_not_for_being_analog():
+    """Q4 is a digital question, and the refusal has to say the real reason.
+
+    Telling someone their digital question was refused as "analog" answers an
+    objection nobody made, and sends them off to fix something that was never
+    wrong.
+    """
+    with pytest.raises(domain.DomainError) as caught:
+        domain.check_digital(Q4)
+
+    message = str(caught.value)
+    assert "seven-segment" in message
+    assert "measured" in message
+    assert "ANALOG" not in message
+    # It must say WHY the part is missing: a measurement nobody has made, not
+    # a feature nobody has written.
+    assert "real file" in message
+
+
+def test_the_refusal_names_the_part_the_question_actually_used():
+    with pytest.raises(domain.DomainError, match="7447"):
+        domain.check_digital("Wire a 7447 to drive the segments.")
 
 
 def test_the_refusal_says_what_to_do_instead():

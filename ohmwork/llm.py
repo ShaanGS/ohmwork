@@ -267,6 +267,17 @@ class GroqProvider:
             raise self._explain(e) from None
 
         text = (response.choices[0].message.content or "").strip()
+        # Same guard as the HTTP client, and it is here because the absence
+        # of it was found the hard way twice: a reasoning model spends its
+        # whole budget thinking and returns an empty string with a
+        # successful 200. Passed on, that surfaces layers up as "the reply
+        # contains no JSON object", which blames the model for a budget this
+        # side chose.
+        if not text:
+            raise LLMError(
+                f"{self.name}/{self.model} returned an empty completion. On a "
+                f"reasoning model this usually means max_tokens ({max_tokens}) "
+                f"was spent before any answer was written.")
         return Reply(text=text, model=self.model, provider=self.name)
 
     def _explain(self, error: Exception) -> LLMError:
