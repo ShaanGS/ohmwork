@@ -10,8 +10,18 @@
 # It does NOT check any measured number. Every test that needs a simulator
 # skips. That is by design and it is the reason for `-rs` below: pytest prints
 # a one-line reason for every skip, so the log SAYS what was not examined
-# rather than reporting a quiet pass over an unrun check. Roughly 25 of ~516
-# tests skip here; the same suite run on a machine with the simulators skips 2.
+# rather than reporting a quiet pass over an unrun check. 28 of 550 tests skip
+# here; the same suite on a machine with the simulators skips 2.
+#
+# TO REHEARSE THIS LOCALLY ON WINDOWS, clear all THREE things a Linux runner
+# lacks -- the third one cost a red first build:
+#
+#   env -u LOCALAPPDATA OHMWORK_LTSPICE=/x OHMWORK_LOGISIM=/x #       OHMWORK_LTSPICE_LIB=/x python -m pytest -q -rs
+#
+# Overriding the two executable variables is NOT enough. LTspice's component
+# libraries are found under %LOCALAPPDATA% regardless of them, so a rehearsal
+# that leaves it set is still using the real device library and passes 47
+# tests that cannot run on the runner. See tests/conftest.py.
 name: tests
 
 on:

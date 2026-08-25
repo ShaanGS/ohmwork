@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import REAL_PARTS_LIBRARY
+
 from ohmwork.parts import (
     PartsLibrary,
     UnknownPartError,
@@ -208,8 +210,13 @@ def test_synthesize_zener_custom_test_current():
 
 # ---------------------------------------------------- real install (skips)
 
+# Keyed on the availability captured in conftest BEFORE any stand-in library
+# is put in place. Calling locate_lib_dir() here would find the fixture
+# extract CI substitutes for the manifest tests, and these assertions are
+# about a real install -- a stand-in answering them would be a check agreeing
+# with itself.
 real = pytest.mark.skipif(
-    not PartsLibrary.locate_lib_dir(),
+    not REAL_PARTS_LIBRARY,
     reason="LTspice component libraries not installed",
 )
 
