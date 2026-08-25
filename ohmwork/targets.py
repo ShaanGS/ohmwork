@@ -134,6 +134,13 @@ class LogisimTarget:
         "or2":        ("OR Gate", {"inputs": "2"}),
         "xor2":       ("XOR Gate", {"inputs": "2"}),
         "or4":        ("OR Gate", {"inputs": "4"}),
+
+        # Logisim Evolution parts, measured 2026-08-26. NOT primitives: they
+        # come from #TTL and #I/O, so a question declaring primitives_only
+        # rejects them -- which is the first time that check has had
+        # anything real to reject.
+        "ttl7447":       ("7447", {}),
+        "seven_segment": ("7-Segment Display", {}),
     }
 
     def known_types(self):

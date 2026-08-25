@@ -154,28 +154,42 @@ def test_a_sequential_circuit_is_refused_because_a_truth_table_cannot_check_it()
     assert "truth table" in message
 
 
-def test_the_real_Q4_is_refused_for_the_PART_not_for_being_analog():
-    """Q4 is a digital question, and the refusal has to say the real reason.
+def test_the_real_Q4_is_NO_LONGER_refused():
+    """It was refused for months, and the reason was never a missing feature.
 
-    Telling someone their digital question was refused as "analog" answers an
-    objection nobody made, and sends them off to fix something that was never
-    wrong.
+    The 7447 and the seven-segment display were measured on 2026-08-26 from
+    public Logisim Evolution files, and Evolution confirmed the geometry by
+    decoding BCD from a circuit built out of it (tests/test_logisim_ttl.py).
+    The screen has to reflect that: a refusal kept after its reason expired
+    is just a wrong answer with a good history.
     """
-    with pytest.raises(domain.DomainError) as caught:
-        domain.check_digital(Q4)
-
-    message = str(caught.value)
-    assert "seven-segment" in message
-    assert "measured" in message
-    assert "ANALOG" not in message
-    # It must say WHY the part is missing: a measurement nobody has made, not
-    # a feature nobody has written.
-    assert "real file" in message
+    domain.check_digital(Q4)
 
 
-def test_the_refusal_names_the_part_the_question_actually_used():
-    with pytest.raises(domain.DomainError, match="7447"):
-        domain.check_digital("Wire a 7447 to drive the segments.")
+def test_a_TTL_part_that_still_has_no_measurement_is_still_refused():
+    """The mechanism survives its first success.
+
+    A screen that stopped rejecting anything the day one part was measured
+    would be worth nothing -- so the list now holds the parts that remain
+    unmeasured, and shrinks only when a real file arrives for one.
+    """
+    with pytest.raises(domain.DomainError, match="74138"):
+        domain.check_digital("Use a 74138 decoder to select one of eight lines.")
+
+    message = str(pytest.raises(
+        domain.DomainError, domain.check_digital,
+        "Build a 4-bit adder with a 7483.").value)
+    assert "measured" in message and "real file" in message
+
+
+def test_the_measured_parts_are_not_in_the_unmeasured_list():
+    """Two tables, one fact. They drift the moment nobody checks."""
+    from ohmwork.logisim_symbols import PORTS
+
+    known = {name.lower() for name, _ in PORTS}
+    for part in domain.UNMEASURED_PARTS:
+        assert part.lower() not in known, (
+            f"{part} is refused as unmeasured but IS in the pin table")
 
 
 def test_the_refusal_says_what_to_do_instead():

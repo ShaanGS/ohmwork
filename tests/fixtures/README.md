@@ -56,6 +56,38 @@ Hand-drawn Logisim **2.7.1** files. Not Logisim Evolution — see CLAUDE.md.
   passes. The only fixture here that was edited for a purpose beyond
   redaction; that is why it is named for what it is.
 
+### evolution_7447_display.circ — NOT hand-drawn HERE, and not ours
+
+The only fixture in this repo that came from someone else's project. It is a
+real Logisim **Evolution** file (every other `.circ` here is 2.7.1), and it
+contains the two components the BCD-to-seven-segment question needs: a `7447`
+from the `#TTL` library and a `7-Segment Display` from `#I/O`.
+
+    source:  https://github.com/acmpesuecc/7_seg_display  (7_seg.circ)
+    licence: MIT
+    used as: geometry evidence for the seven-segment display's seven ports
+
+Its four `Text` elements (the signal labels A, B, C and D) were removed, the
+same redaction every fixture here gets: `Text` is not geometry, and a blanket
+"no Text elements in any fixture" rule needs no judgement call about whether a
+particular label is a person's name. Nothing else was touched, and no
+geometry was.
+
+**The 7447's geometry is NOT pinned by this file**, which wires only one of
+its ports. That measurement came from five instances across public files
+whose licences do not permit redistribution:
+
+    blueroaring/NJUCS_2024_Spring_DLCC        lab4.2, lab4.4, lab5.3
+    CuSO4wyt/NJU-DLCO-2024Spring-lab-logisim  lab03..lab06
+    naumgh/projectsAndSchool                  lab53bc.circ
+    nabiha02/NSU_CSE231L-Digital-Design-Lab   Lab 6
+
+so they are cited rather than copied. What stands in their place as a
+*standing* check is stronger than a fixture anyway: `test_logisim_ttl.py`
+writes a circuit from the pin table and has Logisim Evolution evaluate it,
+and a wrong offset cannot survive that -- it leaves a pin unconnected and the
+decode collapses. That test skips when Evolution is absent, and says so.
+
 ## ltspice/
 
 Hand-drawn `.asc` files by three different students. Between them they

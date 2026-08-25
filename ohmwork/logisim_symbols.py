@@ -64,6 +64,11 @@ DISCRIMINATOR = {
     "XOR Gate": "inputs",
     "Adder": "width",
     "Priority Encoder": "select",
+    # Every 7447 and display measured is the default shape. Facing is
+    # checked separately: two instances in the sample carried facing="south"
+    # and their geometry is NOT this one.
+    "7447": None,
+    "7-Segment Display": None,
 }
 
 # Attributes that invalidate the measurements if present, per component.
@@ -114,6 +119,74 @@ PORTS: dict[tuple[str, str | None], list[Port]] = {
                                 Port("d2", -40, 10, "in"), Port("d3", -40, 20, "in"),
                                 Port("en", -20, 30, "in"), Port("out", 0, 0, "out"),
                                 Port("gs", 0, 10, "out")],
+
+    # ------------------------------------------------- Logisim Evolution
+    #
+    # THE 7447, and it is the first entry here whose evidence is not a single
+    # hand-drawn file. Three sources, none of which shares an implementation
+    # with the others:
+    #
+    #  1. GEOMETRY, measured by the dead-end method across five instances in
+    #     public Logisim Evolution files (recorded in tests/fixtures/README).
+    #     A DIP-16: two rows 60 apart, eight pins per row, pitch 20, the
+    #     first at x=10.
+    #  2. PORT ORDER, read from Evolution's own class constants in
+    #     com/cburch/logisim/std/ttl/Ttl7447: B, C, LT, BI, RBI, D, A, QE,
+    #     QD, QC, QB, QA, QG, QF. Fourteen ports for a sixteen-pin package,
+    #     because pin 8 (GND) and pin 16 (Vcc) are not connectable.
+    #  3. BEHAVIOUR, confirmed by Evolution evaluating a file written FROM
+    #     this table: all ten valid BCD digits decode exactly as the 7447
+    #     datasheet says. A wrong offset cannot survive that -- it would
+    #     leave a pin unconnected and the decode would collapse.
+    #
+    # The DIP numbering is why the top row runs backwards: pins 1-8 go left
+    # to right along the bottom, then 9-16 right to left along the top.
+    ("7447", None): [
+        Port("B", 10, 30, "in"),        # pin 1
+        Port("C", 30, 30, "in"),        # pin 2
+        Port("LT", 50, 30, "in"),       # pin 3   lamp test, active low
+        Port("BI", 70, 30, "in"),       # pin 4   blanking in, active low
+        Port("RBI", 90, 30, "in"),      # pin 5   ripple blanking, active low
+        Port("D", 110, 30, "in"),       # pin 6   MSB
+        Port("A", 130, 30, "in"),       # pin 7   LSB
+        Port("QE", 150, -30, "out"),    # pin 9   segment e, ACTIVE LOW
+        Port("QD", 130, -30, "out"),    # pin 10
+        Port("QC", 110, -30, "out"),    # pin 11
+        Port("QB", 90, -30, "out"),     # pin 12
+        Port("QA", 70, -30, "out"),     # pin 13
+        Port("QG", 50, -30, "out"),     # pin 14
+        Port("QF", 30, -30, "out"),     # pin 15
+    ],
+
+    # The seven-segment display. Geometry measured in every instance across
+    # three files; the SEGMENT NAMES come from tracing a working circuit --
+    # whichever display port shares a net with the 7447's QA is segment a --
+    # and independently match Logisim's documented port order.
+    #
+    # `dp` is the one port here NOT measured: no file examined wired a
+    # decimal point, so it is invisible to the dead-end method. It is listed
+    # because the port order predicts it and because a component silently
+    # missing a port is worse than one carrying a labelled assumption, but
+    # it is an ASSUMPTION and is marked as one.
+    ("7-Segment Display", None): [
+        Port("g", 0, 0, "in"),
+        Port("f", 10, 0, "in"),
+        Port("a", 20, 0, "in"),
+        Port("b", 30, 0, "in"),
+        Port("e", 0, 60, "in"),
+        Port("d", 10, 60, "in"),
+        Port("c", 20, 60, "in"),
+        Port("dp", 30, 60, "in"),       # NOT MEASURED -- see above
+    ],
+}
+
+#: Ports carried on an assumption rather than a measurement, and why. Kept as
+#: data rather than a comment so a test can assert the list does not grow
+#: quietly: every entry here is a place this table is weaker than it looks.
+ASSUMED_PORTS = {
+    ("7-Segment Display", "dp"):
+        "no file examined wired a decimal point, so its coordinate follows "
+        "the port order rather than a dead-end measurement",
 }
 
 # Libraries whose components count as primitives for `primitives_only`.
@@ -137,6 +210,8 @@ LIB_OF = {
     "XOR Gate": "#Gates",
     "Adder": "#Arithmetic",
     "Priority Encoder": "#Plexers",
+    "7447": "#TTL",
+    "7-Segment Display": "#I/O",
 }
 
 

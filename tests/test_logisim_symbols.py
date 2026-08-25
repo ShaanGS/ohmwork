@@ -29,7 +29,25 @@ def test_module_table_matches_the_independent_measurements():
     wrong -- the evidence is not.
     """
     module = {key: [(p.dx, p.dy) for p in ports] for key, ports in PORTS.items()}
-    assert module == MEASURED
+
+    # The 2.7.1 components, which that file measures, must match EXACTLY.
+    covered = {key: value for key, value in module.items() if key in MEASURED}
+    assert covered == MEASURED
+
+    # Everything else must be covered by other evidence, named here. This is
+    # the half that stops the check going quiet: without it, adding a new
+    # component with invented offsets would pass, because the equality above
+    # only sees the keys the old fixtures happen to contain.
+    ELSEWHERE = {
+        ("7447", None): "tests/test_logisim_ttl.py — Evolution evaluates a "
+                        "circuit built from these offsets and decodes BCD",
+        ("7-Segment Display", None): "tests/test_logisim_ttl.py — dead ends in "
+                                     "evolution_7447_display.circ",
+    }
+    unexplained = set(module) - set(MEASURED) - set(ELSEWHERE)
+    assert not unexplained, (
+        f"{unexplained} is in the pin table with no evidence file named for "
+        f"it. Add the measurement, or say where it was measured.")
 
 
 # ------------------------------------------------- refusing to guess
@@ -86,12 +104,37 @@ def test_port_positions_places_ports_absolutely():
     }
 
 
-def test_there_is_always_a_port_at_loc():
-    # Measured across every component: loc is itself a port. For gates it is
-    # the single output. Adder and Priority Encoder each carry a SECOND
-    # output beside it, which is why nothing may assume "output last".
-    for (name, disc), ports in PORTS.items():
-        assert (0, 0) in [p.offset for p in ports], (name, disc)
+#: Components whose `loc` is NOT one of their ports.
+#:
+#: "loc is itself a port" held for every 2.7.1 primitive measured and was
+#: written down as if it were a property of the format. It is not: it is a
+#: property of small gates. Logisim Evolution's TTL parts are drawn as DIP
+#: packages whose loc is the corner of the body, with every pin along the two
+#: long sides and nothing at the anchor at all.
+#:
+#: Listed rather than dropped, because the invariant is still true of
+#: everything else and is worth keeping true. An entry here is a claim that
+#: the exception was checked, not that the rule was inconvenient.
+#:
+#: The seven-segment display is deliberately NOT here, and finding that out
+#: cost one failing test: it is an Evolution part too, but its loc IS a port
+#: (segment g). "Evolution parts are different" was the wrong
+#: generalisation -- DIP packages are.
+NO_PORT_AT_LOC = {("7447", None)}
+
+
+def test_there_is_always_a_port_at_loc_EXCEPT_for_the_DIP_packages():
+    # For gates loc is the single output. Adder and Priority Encoder each
+    # carry a SECOND output beside it, which is why nothing may assume
+    # "output last".
+    for key, ports in PORTS.items():
+        offsets = [p.offset for p in ports]
+        if key in NO_PORT_AT_LOC:
+            assert (0, 0) not in offsets, (
+                f"{key} is listed as having no port at loc, but has one now. "
+                f"Either the measurement changed or the list is stale.")
+            continue
+        assert (0, 0) in offsets, key
 
     outputs = lambda key: [p.name for p in PORTS[key] if p.kind == "out"]
     assert outputs(("AND Gate", "2")) == ["out"]

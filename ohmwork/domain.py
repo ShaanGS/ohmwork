@@ -94,17 +94,21 @@ SEQUENTIAL_ADVICE = (
 #: question naming one of these cannot be built at all -- and the reason is
 #: worth saying out loud, because it is a missing MEASUREMENT, not a missing
 #: feature.
+#: MEASURED 2026-08-26 and therefore NO LONGER REFUSED: the 7447 and the
+#: seven-segment display. What is listed here is what remains unmeasured --
+#: every other TTL part. The list shrinks as real files arrive, which is the
+#: only way it is allowed to shrink.
 UNMEASURED_PARTS = (
-    "7447", "7448", "7segment", "seven-segment", "seven segment",
-    "7-segment", "74ls47", "74ls48", "display", "multiplexer ic", "74ls",
+    "7400", "7402", "7404", "7408", "7410", "7411", "7420", "7432", "7442",
+    "7448", "7474", "7476", "7483", "7485", "7486", "74138", "74151",
+    "74153", "74157", "74161", "74163", "74181", "74192", "74193",
 )
 
 UNMEASURED_ADVICE = (
     "Every component this tool can place had its pin geometry MEASURED from "
-    "a real file, and it refuses to guess at one it has never seen. The 7447 "
-    "and the seven-segment display live in Logisim Evolution's TTL and I/O "
-    "libraries, and no file containing them has ever been measured here -- "
-    "so the circuit could be drawn, but every wire on it would be a guess."
+    "a real file, and it refuses to guess at one it has never seen. To add "
+    "this one, a real .circ containing it has to be measured -- the circuit "
+    "could be drawn without that, but every wire on it would be a guess."
 )
 
 ANALOG_ADVICE = (
