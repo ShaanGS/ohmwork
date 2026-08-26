@@ -323,6 +323,42 @@ no checks were skipped, and prints every regime assertion that HELD along
 with what it examined, because a quiet page must never be indistinguishable
 from an unexamined one.
 
+### Solving from the command line
+
+A question typed in plain English, a circuit file and the analysis back:
+
+```bash
+python -m ohmwork --solve "Design a 2-to-4 decoder with an active-high enable"
+python -m ohmwork --solve "Design a series voltage regulator in LTspice that
+                           delivers 9 V to a 1k load from a 15 V supply"
+```
+
+It routes by reading the question and says which way it went, because that is
+a guess made from words. Getting it wrong is safe -- the loop it picks runs
+its own domain check and refuses with the reason -- and `--domain` overrides.
+
+**The two halves do not make the same claim, and the output says so.** A
+digital answer is checked against an exhaustive truth table computed by
+Logisim from the emitted file: every row, nothing left over. An analog answer
+has no such table to be checked against. What is established there is that the
+circuit converged, that its devices stayed in the operating regimes the
+results depend on, and that the numbers the question NAMED came out where the
+question said they should -- and that leaves a gap with no digital
+counterpart, printed with every result:
+
+> **NOT established by any check here:** ... that what came back is a good
+> design. Meeting a target is not being good: a regulator that hits its
+> voltage while dissipating six watts in the pass transistor, or with ripple
+> nobody asked about, satisfies everything here.
+
+Three things keep the analog check from being decorative. A tolerance is
+capped, because one wide enough to admit any plausible circuit cannot fail. An
+intent with no targets at all is refused. And the regime assertions are
+derived from the parts list rather than requested, so a design cannot omit the
+one that would have failed. A quantity the question gave no number for is
+reported and counted separately as **not checked** -- a run in which nothing
+could fail must not read like one in which nothing did.
+
 ### The live service (digital only)
 
 A question typed in plain English, a Logisim circuit file and a truth table
@@ -344,9 +380,10 @@ This rewrites a rule rather than breaking one. The old rule said *no model in
 the hot path*, on the grounds that the server could not simulate. That is
 permanently true for **analog** -- LTspice is a Windows GUI application, and
 ngspice cannot read its device libraries -- and it was simply false for
-digital. So analog is not served here at all, and the rule now reads: *no
-response may carry a circuit or a table the evaluator did not confirm, and
-every response names the evaluator that confirmed it.*
+digital. So analog is not served here at all -- it runs on the command line,
+locally, where LTspice is -- and the rule now reads: *no response may carry a
+circuit or a table the evaluator did not confirm, and every response names the
+evaluator that confirmed it.*
 
 The reading the loop worked from is printed above the answer, in warning
 colour, because that is the one failure none of this machinery can catch: a
