@@ -379,3 +379,28 @@ def test_an_unknown_api_route_is_a_404_not_the_single_page_app(tmp_path):
 
     assert client.get("/api/nonsense").status_code == 404
     assert client.get("/some/deep/link").text == "<html>the app</html>"
+
+
+def test_the_built_page_is_found_by_an_INSTALLED_package_too(tmp_path,
+                                                             monkeypatch):
+    """Found by the first real Docker build, and it could not have been found
+    anywhere else.
+
+    The page was looked for at `__file__/../../web/dist`, which is the source
+    tree only for an EDITABLE install -- how this repo is developed. In an
+    image the package is installed properly, that path lands inside
+    site-packages, and the API kept working while the page went blank. So the
+    lookup takes an explicit `OHMWORK_STATIC`, and the environment wins.
+    """
+    built = tmp_path / "dist"
+    (built / "assets").mkdir(parents=True)
+    (built / "index.html").write_text('<div id="root"></div>', encoding="utf-8")
+    monkeypatch.setenv("OHMWORK_STATIC", str(built))
+
+    client = TestClient(server.create_app(solver=lambda *a, **k: None,
+                                          password=PASSWORD))
+    page = client.get("/")
+    assert page.status_code == 200
+    assert 'id="root"' in page.text
+    # ...and an unknown /api route is still a 404, never the page.
+    assert client.get("/api/nope").status_code == 404

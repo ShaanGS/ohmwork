@@ -44,24 +44,62 @@ jobs:
             'xvfb-run -a java -jar "$OHMWORK_LOGISIM" --version 2>&1 | head -5 || true; java -version'
 
       - name: It must serve, refuse anonymous solves, and stay up
+        # THE LOGS ARE PRINTED WHATEVER HAPPENS, and that is the point. The
+        # first real run of this workflow caught the container dying at
+        # startup and then reported eighty seconds of "connection refused" --
+        # true, and it never said why, because `docker logs` sat after the
+        # command that failed. A check that catches a broken image but cannot
+        # say what broke is half a check.
         run: |
           docker run -d --name ohmwork -p 7860:7860 \
             -e OHMWORK_PASSWORD=ci-only-password \
             ohmwork:ci
+          served=""
           for i in $(seq 1 40); do
-            if curl -fsS http://127.0.0.1:7860/api/health; then break; fi
+            if curl -fsS http://127.0.0.1:7860/api/health; then served=1; break; fi
+            # Stop the moment it is gone: a container that has exited will
+            # never answer, and forty more identical errors bury the reason.
+            if [ -z "$(docker ps -q --filter name=ohmwork)" ]; then
+              echo "the container exited before it served anything"; break
+            fi
             sleep 2
           done
           echo
+          echo "===== container logs ====="
+          docker logs ohmwork 2>&1 || true
+          echo "========================="
+          if [ -z "$served" ]; then
+            docker rm -f ohmwork >/dev/null 2>&1 || true
+            echo "/api/health never answered"; exit 1
+          fi
           # A solve without a session must be refused. This is the check that
           # matters most in a container that will hold real API keys.
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
                  -H 'Content-Type: application/json' \
                  -d '{"question":"design a 2-to-4 decoder"}' \
-                 http://127.0.0.1:7860/api/solve)
+                 http://127.0.0.1:7860/api/solve || true)
+          docker rm -f ohmwork >/dev/null 2>&1 || true
           test "$code" = "401" || { echo "anonymous solve returned $code"; exit 1; }
-          docker logs ohmwork
-          docker rm -f ohmwork
+
+      - name: The PAGE must be served, not only the API
+        # The built page lives beside the INSTALLED package, and this repo is
+        # developed with an editable install -- where that path happens to be
+        # the source tree, so a wrong lookup works perfectly on a laptop and
+        # fails only inside an image. Checking the API alone would never find
+        # it, and the symptom on a live Space is a blank white screen.
+        run: |
+          docker run -d --name ohmwork-page -p 7861:7860 \
+            -e OHMWORK_PASSWORD=ci-only-password \
+            ohmwork:ci
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:7861/api/health; then break; fi
+            sleep 2
+          done
+          body=$(curl -fsS http://127.0.0.1:7861/ || true)
+          docker rm -f ohmwork-page >/dev/null 2>&1 || true
+          echo "$body" | head -3
+          echo "$body" | grep -q 'id="root"' || {
+            echo "the built page was not served"; exit 1; }
 
       - name: A container with no password must REFUSE to start
         # Fail closed. The one misconfiguration whose symptom is everything

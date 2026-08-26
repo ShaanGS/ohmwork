@@ -391,12 +391,26 @@ def _mount_static(app: FastAPI, static_dir) -> None:
 
     Optional on purpose: the API is the product and must be runnable and
     testable without a node toolchain anywhere near it.
+
+    THREE PLACES ARE TRIED, and the reason is a bug the first real Docker
+    build found. `__file__/../..` is the source tree only for an EDITABLE
+    install, which is how this repo is developed; in an image the package is
+    installed properly and that path points inside site-packages, where no
+    `web/dist` exists. The API kept working and the page went blank -- a
+    failure that cannot happen on the machine it was written on. So the
+    working directory (the container's `/app`) and an explicit
+    `OHMWORK_STATIC` are tried too, and the environment wins.
     """
     from fastapi.staticfiles import StaticFiles
 
-    directory = Path(static_dir or Path(__file__).resolve().parent.parent
-                     / "web" / "dist")
-    if not (directory / "index.html").is_file():
+    candidates = [static_dir, os.environ.get("OHMWORK_STATIC"),
+                  Path(__file__).resolve().parent.parent / "web" / "dist",
+                  Path.cwd() / "web" / "dist"]
+    for candidate in candidates:
+        if candidate and (Path(candidate) / "index.html").is_file():
+            directory = Path(candidate)
+            break
+    else:
         return
 
     app.mount("/assets", StaticFiles(directory=directory / "assets"),
