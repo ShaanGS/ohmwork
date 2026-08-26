@@ -98,11 +98,15 @@ RULES:
    Wider than that and any plausible circuit satisfies it, so the check
    cannot fail.
 
-3. Node names. Every target names the node(s) it is measured at, in
-   "net" (and "net2" for a voltage measured BETWEEN two nodes, such as a
-   floating transformer secondary). Choose short names matching
+3. WHERE it is measured. A VOLTAGE target names the node(s) in "net" (and
+   "net2" for a voltage measured BETWEEN two nodes, such as a floating
+   transformer secondary). Choose short names matching
    [A-Za-z][A-Za-z0-9_]* -- vin, vb, vout, vrect, vfilt. THESE ARE
    AUTHORITATIVE: the circuit will be required to use exactly them.
+   A CURRENT target names a "role" instead, never a net. "The load current
+   waveform" is {{"kind": "current_waveform", "role": "load"}} -- NOT a
+   "waveform" target on the load's node, which would measure a voltage and
+   report it under a name that says current.
 
 4. "frequency" is the source frequency in Hz, and is REQUIRED if any target
    is one of {transient}. The simulation window is derived from it. Use null
@@ -160,16 +164,21 @@ RULES:
    Give a zener the voltage the design needs, not the one the OUTPUT needs:
    a series regulator's output sits about 0.7 V below its zener.
 
-6. AN AC SOURCE carries "ac" instead of "value":
+6. DAMPING. An L-C filter with nothing resistive in series RINGS: the
+   solver takes tinier and tinier steps, the result file grows to hundreds
+   of megabytes, and the run is refused. If the design has an inductor in a
+   filter, put a series resistance in the path.
+
+7. AN AC SOURCE carries "ac" instead of "value":
      {{"ref": "V1", "type": "voltage",
        "ac": {{"kind": "sine", "rms": 12, "freq": 50}}}}
 
-7. ORIGINS. Every component carries "origin": "stated" if the question gives
+8. ORIGINS. Every component carries "origin": "stated" if the question gives
    that value, "designed" if you chose it. A "designed" value MUST carry a
    "rationale" of one sentence saying why that number. A chosen value that
    looks like a given one submits your judgement as the student's own.
 
-8. No JSON outside the object. No markdown fences, no explanation.
+9. No JSON outside the object. No markdown fences, no explanation.
 
 SHAPE, exactly:
 

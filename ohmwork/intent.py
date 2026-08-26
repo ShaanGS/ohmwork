@@ -71,17 +71,36 @@ TARGET_KINDS = {
     "ac_rms": ("net",),
     "ac_mean": ("net",),
     "waveform": ("net",),
+    # A CURRENT over time, which `waveform` cannot express: it measures
+    # V(net). MEASURED on the live Q3 run, whose "load current waveform" came
+    # back as a `waveform` target on the load's node -- a voltage, reported
+    # under a name that says current, with nothing to catch it because an
+    # observation has no number to fail against.
+    "current_waveform": ("role",),
 }
 
 #: Kinds that need a transient run, and therefore a source frequency.
-TRANSIENT_KINDS = {"ripple_pp", "ac_rms", "ac_mean", "waveform"}
+TRANSIENT_KINDS = {"ripple_pp", "ac_rms", "ac_mean", "waveform",
+                   "current_waveform"}
+
+#: The unit a kind is always in, used when the intent omits one. DERIVED
+#: rather than required, for the same reason the plan is: a volt target is
+#: measured in volts whatever anyone writes, so asking adds a way to be wrong
+#: and no way to be right. MEASURED on the live Q3 run, where the reading
+#: rendered "6.2  +/- 5%" with the unit missing -- cosmetic, and not worth
+#: spending a retry on.
+UNIT_OF = {"dc_voltage": "V", "dc_current": "A", "ripple_pp": "V",
+           "ac_rms": "V", "ac_mean": "V", "waveform": "V",
+           "line_regulation": "%", "load_regulation": "%",
+           "current_waveform": "A"}
 
 #: Which statistic of a waveform each transient kind means. A waveform
 #: measurement's `value` is its time-weighted MEAN, so reading a ripple target
 #: off `value` would compare a peak-to-peak requirement against an average --
 #: incident 5's number in a new place.
 STATISTIC = {"ripple_pp": "ripple_pp", "ac_rms": "rms",
-             "ac_mean": "mean", "waveform": "mean"}
+             "ac_mean": "mean", "waveform": "mean",
+             "current_waveform": "mean"}
 
 #: What a current target may name. Roles rather than refs, because a ref is a
 #: DESIGN artefact and the intent is written before any circuit exists.
@@ -169,6 +188,28 @@ class Target:
             return f"V({self.net})-V({self.net2})"
         return f"V({self.net})"
 
+    def where(self) -> str:
+        """WHAT this target is measured on, for the reading.
+
+        MEASURED on the live Q3 run: a "load current waveform" target came
+        back as a voltage on the load's node, reported under a name that says
+        current, with nothing to catch it -- an observation has no number to
+        fail against. A reading that shows the expression makes the mistake
+        visible to the one reader who can act on it.
+        """
+        if self.role:
+            what = "current" if self.kind in ("dc_current",
+                                              "current_waveform") else "value"
+            return f"the {self.role}'s {what}"
+        where = (f"V({self.net}) - V({self.net2})" if self.net2
+                 else f"V({self.net})")
+        if self.kind == "line_regulation":
+            return (f"{where}, over a {_g(self.low)} V to {_g(self.high)} V "
+                    f"input")
+        if self.kind == "load_regulation":
+            return f"{where}, from a {self.light} to a {self.heavy} load"
+        return where
+
     def wanted(self) -> str:
         """What was asked for, in words, for a message a person reads."""
         if self.value is not None:
@@ -214,9 +255,11 @@ class Intent:
         if self.frequency:
             lines.append(f"source frequency: {_g(self.frequency)} Hz")
         lines.append("targets:")
+        where = max((len(t.where()) for t in self.targets), default=0)
         for target in self.targets:
             lines.append(f"  {target.name:<{width}}  "
-                         f"{target.quantity:<{quantity}}  {target.wanted()}")
+                         f"{target.quantity:<{quantity}}  "
+                         f"{target.where():<{where}}  {target.wanted()}")
         if self.stated_values:
             lines.append("stated in the question:")
             for stated in self.stated_values:
@@ -326,7 +369,7 @@ def _parse_target(data, index) -> Target:
     minimum = data.get("minimum", data.get("min"))
     return Target(
         name=name, kind=kind, quantity=quantity.strip(),
-        unit=str(data.get("unit", "")),
+        unit=str(data.get("unit") or UNIT_OF[kind]),
         value=value, tolerance_pct=tolerance,
         maximum=None if maximum is None else _number(maximum, f"{where}.max"),
         minimum=None if minimum is None else _number(minimum, f"{where}.min"),
@@ -560,6 +603,10 @@ def build_analog_plan(intent: Intent, circuit: dict) -> dict:
                  "definition": (f"{target.light} to {target.heavy} load, "
                                 f"normalised to the heavier load")},
             ]
+        elif target.kind == "current_waveform":
+            ref = _resolve_role(target.role, circuit)
+            measurements.append({"name": target.name, "kind": "waveform_stats",
+                                 "run": TRAN_RUN, "expr": f"I({ref})"})
         else:
             measurements.append({"name": target.name, "kind": "waveform_stats",
                                  "run": TRAN_RUN, "expr": target.expr})

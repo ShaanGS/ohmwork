@@ -114,6 +114,43 @@ def _log_tail(log_path: Path, lines: int = 15) -> str:
     return "\n".join(text.splitlines()[-lines:])
 
 
+#: How large an ASCII raw file this will read before giving up on it.
+#:
+#: MEASURED, on the first live analog solve of the real Q3: a generated
+#: bridge-rectifier-plus-C-L-C design with no damping resistance produced a
+#: **335 MB** raw file from a 100 ms saved window. The SIMULATION finished
+#: well inside its timeout -- what did not finish was parsing a third of a
+#: gigabyte of ASCII, so the subprocess timeout never fired and the run hung
+#: with no error and no ceiling.
+#:
+#: A file that size is a FACT ABOUT THE CIRCUIT, not about the file: the
+#: solver only takes steps that small when something is ringing. So it is
+#: reported as a design failure, in words a design can act on, rather than
+#: absorbed silently or waited on forever.
+MAX_RAW_BYTES = 64_000_000
+
+
+def check_raw_size(raw_path: Path, limit: int | None = None) -> None:
+    """Refuse to parse a result file that is too large to be about a circuit.
+
+    Its own function so it can be tested without a 335 MB fixture, and so
+    both backends can reach it. The message is written to be fed back to a
+    design loop, so it says what to change rather than what went wrong.
+    """
+    limit = MAX_RAW_BYTES if limit is None else limit
+    size = raw_path.stat().st_size
+    if size <= limit:
+        return
+    raise SimulationError(
+        f"LTspice wrote a {size / 1e6:.0f} MB result for {raw_path.name}, "
+        f"over the {limit / 1e6:.0f} MB limit, so it was not parsed. A "
+        f"transient run this large means the solver took very small steps "
+        f"for a long time, which almost always means the circuit is RINGING: "
+        f"an undamped LC, or a filter with no series resistance to damp it. "
+        f"Add damping, or shorten the run."
+    )
+
+
 class LTspiceBackend:
     name = "ltspice"
     #: An OUTSIDE simulator computed this, so a bug in our emitter or our
@@ -151,6 +188,7 @@ class LTspiceBackend:
                 f"LTspice produced no raw file for {asc_path.name}. "
                 f"End of log:\n{_log_tail(log_path)}"
             )
+        check_raw_size(raw_path)
         return _read_results(raw_path, log_path)
 
 

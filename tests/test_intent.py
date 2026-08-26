@@ -488,3 +488,51 @@ def test_a_choice_made_here_never_renders_as_something_the_question_said():
     assert stated < chosen
     assert "2% tolerance was assumed" in reading.split(
         "chosen here, because the question left it open:")[1]
+
+
+def test_a_missing_unit_is_DERIVED_rather_than_demanded():
+    """MEASURED on the live Q3 run, where the reading rendered "6.2  +/- 5%"
+    with no unit at all. A volt target is measured in volts whatever anyone
+    writes, so the unit follows from the kind -- and rejecting an otherwise
+    sound intent over a cosmetic field spends a retry for nothing."""
+    reply = json.loads(REGULATOR)
+    del reply["targets"][0]["unit"]
+    del reply["targets"][2]["unit"]
+
+    intent = parse_intent_reply(json.dumps(reply))
+    assert intent.targets[0].unit == "V"
+    assert intent.targets[2].unit == "A"
+    assert intent.targets[1].unit == "%"
+
+
+def test_a_current_over_time_is_a_current_and_not_a_voltage():
+    """MEASURED on the live Q3 run, and it is the nastiest kind of gap.
+
+    The question asks for the LOAD CURRENT waveform. With only a `waveform`
+    kind -- which measures V(net) -- the model gave it the load's node, so
+    the report would have shown a voltage under a name that says current.
+    Nothing would have caught it: an observation carries no number to fail
+    against.
+    """
+    reply = json.loads(REGULATOR)
+    reply["frequency"] = 50
+    reply["targets"] = [{"name": "i_load_wave", "kind": "current_waveform",
+                         "role": "load", "quantity": "load current waveform"}]
+    intent = parse_intent_reply(json.dumps(reply))
+    assert intent.targets[0].unit == "A"
+
+    plan = build_analog_plan(intent, REGULATOR_CIRCUIT)
+    measurement = next(m for m in plan["measurements"]
+                       if m.get("name") == "i_load_wave")
+    assert measurement["expr"] == "I(RL)"
+    assert measurement["kind"] == "waveform_stats"
+
+
+def test_the_reading_says_WHAT_each_target_is_measured_on():
+    """The defence against the gap above, for every gap like it. A reader
+    checking "did it understand my question" is entitled to see the
+    expression, not only the name someone gave it."""
+    reading = parse_intent_reply(REGULATOR).render()
+    assert "V(vout)" in reading
+    assert "the zener's current" in reading
+    assert "12 V to 20 V input" in reading

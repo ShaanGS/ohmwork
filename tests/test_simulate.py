@@ -201,3 +201,30 @@ def test_ngspice_agrees_on_the_anchored_card(tmp_path):
         B.VB_ANCHORED_NGSPICE.value, abs=1e-3)
     assert results.value("V(vout)") == pytest.approx(
         B.VOUT_ANCHORED.value, abs=0.02)
+
+
+def test_a_result_file_too_large_to_be_about_a_circuit_is_refused(tmp_path):
+    """MEASURED on the first live analog solve of the real Q3.
+
+    A generated bridge-rectifier-plus-C-L-C design with no damping resistance
+    produced a 335 MB raw file from a 100 ms saved window. The SIMULATION
+    finished well inside its timeout; what did not finish was parsing a third
+    of a gigabyte of ASCII, so the subprocess timeout never fired and the run
+    hung with no error and no ceiling.
+
+    A file that size is a fact about the CIRCUIT, not about the file, so it
+    is reported in words a design loop can act on.
+    """
+    import pytest
+
+    from ohmwork.simulate import SimulationError, check_raw_size
+
+    raw = tmp_path / "waveforms.raw"
+    raw.write_bytes(b"x" * 2048)
+
+    check_raw_size(raw, limit=4096)          # comfortably under: no complaint
+    with pytest.raises(SimulationError) as excinfo:
+        check_raw_size(raw, limit=1024)
+    message = str(excinfo.value)
+    assert "RINGING" in message, "it must say what to change, not just what broke"
+    assert "waveforms.raw" in message
