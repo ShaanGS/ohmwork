@@ -18,7 +18,9 @@ This protects a user from hosting and tunnel risks. It does not protect an
 already-compromised local OS, and it does not make model-provider requests
 private from that provider.
 
-## Development
+## Running it from this clone
+
+### First time only
 
 ```powershell
 cd web
@@ -26,8 +28,27 @@ npm install
 npm run build
 cd ..\desktop
 npm install
-npm run dev
 ```
+
+From the project root, also install the Python side once:
+
+```powershell
+python -m pip install -e ".[web,llm]"
+```
+
+### Every time, until a signed installer exists
+
+From the project root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop\run-desktop.ps1
+```
+
+Leave that PowerShell window open while using Ohmwork; closing it closes the
+desktop app and its private backend. On first launch, click the key icon in
+the top-right corner, select your model provider, paste its API key, and press
+**save**. The app restarts automatically. That key is stored encrypted by
+Windows/macOS and is not placed in `.env`.
 
 The development shell starts `python -m ohmwork.server`. Set `OHMWORK_PYTHON`
 if `python` is not the interpreter that has Ohmwork's dependencies.
@@ -48,3 +69,10 @@ On this development machine, Windows Application Control blocks the unsigned
 packaged executable outright. That is expected policy behaviour and is a
 useful release gate: development mode was verified, but a distributable build
 must be signed before asking classmates to trust it.
+
+Once signed installers are released, everyday use becomes simply:
+
+1. Install `Ohmwork Setup … .exe` on Windows, or drag `Ohmwork.app` from the
+   notarized DMG to Applications on macOS.
+2. Open **Ohmwork** from the Start menu, Applications, or Spotlight.
+3. Add a model key once through the key icon, then ask a question.
