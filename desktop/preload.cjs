@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('ohmworkDesktop', Object.freeze({
   providerState: () => ipcRenderer.invoke('desktop:provider-state'),
   saveProviderKey: (name, value) => ipcRenderer.invoke(
     'desktop:save-provider-key', name, value),
+  saveProviderKeys: (values) => ipcRenderer.invoke('desktop:save-provider-keys', values),
 }))

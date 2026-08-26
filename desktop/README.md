@@ -46,9 +46,12 @@ powershell -ExecutionPolicy Bypass -File desktop\run-desktop.ps1
 
 Leave that PowerShell window open while using Ohmwork; closing it closes the
 desktop app and its private backend. On first launch, click the key icon in
-the top-right corner, select your model provider, paste its API key, and press
-**save**. The app restarts automatically. That key is stored encrypted by
-Windows/macOS and is not placed in `.env`.
+the top-right corner and paste keys for every provider you want to use on the
+same screen. Blank fields are ignored. Press **save keys** once; the app
+restarts and the provider pool can move to another configured provider when
+one is rate limited. Existing keys are never displayed: leave a field marked
+`saved` blank to keep it, or enter a replacement. Keys are stored encrypted by
+Windows/macOS and are not placed in `.env`.
 
 The development shell starts `python -m ohmwork.server`. Set `OHMWORK_PYTHON`
 if `python` is not the interpreter that has Ohmwork's dependencies.
@@ -75,4 +78,4 @@ Once signed installers are released, everyday use becomes simply:
 1. Install `Ohmwork Setup … .exe` on Windows, or drag `Ohmwork.app` from the
    notarized DMG to Applications on macOS.
 2. Open **Ohmwork** from the Start menu, Applications, or Spotlight.
-3. Add a model key once through the key icon, then ask a question.
+3. Add all desired model keys once through the key icon, then ask a question.

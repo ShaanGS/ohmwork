@@ -52,6 +52,25 @@ async function writeStoredKey(name, value) {
   await writeFile(settingsPath(), encrypted, { encoding: "utf8", mode: 0o600 });
 }
 
+async function writeStoredKeys(values) {
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    throw new Error("Model keys must be supplied as a provider list.");
+  }
+  const entries = Object.entries(values).filter(([, value]) =>
+    typeof value === "string" && value.trim().length > 0);
+  if (!entries.length) throw new Error("Enter at least one model key.");
+
+  const keys = await readStoredKeys();
+  for (const [name, value] of entries) {
+    if (!PROVIDER_KEYS.has(name)) throw new Error("That is not a supported model provider.");
+    if (value.trim().length < 8) throw new Error("One of the model keys is too short to be valid.");
+    keys[name] = value.trim();
+  }
+  await mkdir(app.getPath("userData"), { recursive: true });
+  const encrypted = safeStorage.encryptString(JSON.stringify(keys)).toString("base64");
+  await writeFile(settingsPath(), encrypted, { encoding: "utf8", mode: 0o600 });
+}
+
 function reserveLoopbackPort() {
   return new Promise((resolve, reject) => {
     const probe = createServer();
@@ -181,6 +200,11 @@ app.whenReady().then(async () => {
     // The backend reads its keys at process start. A relaunch avoids a second
     // code path that mutates a running server, and guarantees the renderer
     // never sees the key after the one IPC call that stores it.
+    setTimeout(() => { app.relaunch(); app.exit(0); }, 150);
+    return { restarting: true };
+  });
+  ipcMain.handle("desktop:save-provider-keys", async (_event, values) => {
+    await writeStoredKeys(values);
     setTimeout(() => { app.relaunch(); app.exit(0); }, 150);
     return { restarting: true };
   });

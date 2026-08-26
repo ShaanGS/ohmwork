@@ -247,8 +247,14 @@ function Solver({ onExpired }) {
 }
 
 function DesktopSettings({ desktop, onDone }) {
-  const [provider, setProvider] = useState('GROQ_API_KEY')
-  const [key, setKey] = useState('')
+  const providers = [
+    ['GROQ_API_KEY', 'Groq'],
+    ['GEMINI_API_KEY', 'Google Gemini'],
+    ['MISTRAL_API_KEY', 'Mistral'],
+    ['OPENROUTER_API_KEY', 'OpenRouter'],
+    ['CEREBRAS_API_KEY', 'Cerebras'],
+  ]
+  const [keys, setKeys] = useState(() => Object.fromEntries(providers.map(([name]) => [name, ''])))
   const [state, setState] = useState(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -264,10 +270,10 @@ function DesktopSettings({ desktop, onDone }) {
     setSaving(true)
     setError('')
     try {
-      await desktop.saveProviderKey(provider, key)
+      await desktop.saveProviderKeys(keys)
       // Electron restarts immediately after accepting it. This text is useful
       // when a platform delays that restart by a moment.
-      setKey('')
+      setKeys(Object.fromEntries(providers.map(([name]) => [name, ''])))
     } catch (reason) {
       setSaving(false)
       setError(reason?.message || 'the key could not be stored')
@@ -284,31 +290,23 @@ function DesktopSettings({ desktop, onDone }) {
             solver process, never to this page, and never uploaded by Ohmwork.
           </p>
         </div>
-        <form onSubmit={save} className="flex flex-col gap-2 sm:flex-row">
-          <select
-            aria-label="Model provider"
-            className="h-9 rounded-md border bg-background px-2 text-sm"
-            value={provider}
-            onChange={(event) => setProvider(event.target.value)}
-            disabled={saving || state?.encryptionAvailable === false}
-          >
-            <option value="GROQ_API_KEY">Groq</option>
-            <option value="GEMINI_API_KEY">Google Gemini</option>
-            <option value="MISTRAL_API_KEY">Mistral</option>
-            <option value="OPENROUTER_API_KEY">OpenRouter</option>
-            <option value="CEREBRAS_API_KEY">Cerebras</option>
-          </select>
-          <Input
-            type="password"
-            autoComplete="off"
-            placeholder="API key"
-            value={key}
-            onChange={(event) => setKey(event.target.value)}
-            disabled={saving || state?.encryptionAvailable === false}
-          />
-          <Button type="submit" disabled={saving || key.trim().length < 8 || state?.encryptionAvailable === false}>
+        <form onSubmit={save} className="space-y-2">
+          {providers.map(([name, label]) => (
+            <label key={name} className="grid gap-1 sm:grid-cols-[9rem_1fr] sm:items-center">
+              <span className="text-sm">{label}</span>
+              <Input
+                type="password"
+                autoComplete="off"
+                placeholder={state?.configured.includes(name) ? 'saved - enter a replacement only' : 'API key (optional)'}
+                value={keys[name]}
+                onChange={(event) => setKeys((current) => ({ ...current, [name]: event.target.value }))}
+                disabled={saving || state?.encryptionAvailable === false}
+              />
+            </label>
+          ))}
+          <Button type="submit" disabled={saving || !Object.values(keys).some((key) => key.trim().length >= 8) || state?.encryptionAvailable === false}>
             {saving && <Loader2 className="animate-spin" />}
-            {saving ? 'restarting' : 'save'}
+            {saving ? 'restarting' : 'save keys'}
           </Button>
         </form>
         {state && (
