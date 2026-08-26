@@ -224,6 +224,25 @@ def test_a_swapped_OUTPUT_is_caught_the_same_way():
     assert conflicts
 
 
+def test_segment_output_names_do_not_collide_with_7447_input_names():
+    """`a` names a display segment, not the 7447's BCD input `A`.
+
+    The guard protects a question output that shares the name of a *part
+    output* (for example QA wired to QB). Applying it to all part pins made a
+    conventional seven-segment output name look like a pin swap.
+    """
+    wiring = derive_wiring(q4_circuit(), "ttl7447", LOGISIM)
+    segment_outputs = {
+        letter: ("port", f"Q{letter.upper()}") for letter in "abcdefg"
+    }
+    renamed = PartWiring(
+        ref=wiring.ref, type_name=wiring.type_name, part_name=wiring.part_name,
+        inputs=wiring.inputs, outputs=segment_outputs, sinks=wiring.sinks,
+        netlist=wiring.netlist,
+    )
+    assert name_conflicts(renamed, LOGISIM) == []
+
+
 # ------------------------------------------------------------ the prediction
 #
 # The reference here is a STAND-IN chip, not the real 7447. What these tests

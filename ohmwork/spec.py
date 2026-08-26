@@ -295,10 +295,14 @@ def evaluate_spec(spec: Spec) -> SpecTable:
     if not spec.outputs:
         raise SpecError("a spec needs at least one output")
 
-    overlap = sorted(set(spec.inputs) & set(spec.outputs))
+    # Logisim treats labels case-insensitively. `A` and `a` are therefore
+    # not separate columns even though Python strings distinguish them.
+    output_by_folded_name = {name.casefold(): name for name in spec.outputs}
+    overlap = sorted(name for name in spec.inputs
+                     if name.casefold() in output_by_folded_name)
     if overlap:
         raise SpecError(
-            f"{overlap} named as both input and output. A signal cannot be "
+            f"{overlap} named as both input and output (case-insensitively). A signal cannot be "
             f"both, and letting it be one produces a table whose columns do "
             f"not mean what their names say."
         )

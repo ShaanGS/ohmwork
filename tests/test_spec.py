@@ -162,6 +162,12 @@ def test_an_output_named_as_an_input_is_rejected():
                            expressions={"A": "A"}))
 
 
+def test_an_output_casefolded_to_an_input_is_rejected():
+    with pytest.raises(SpecError, match="case-insensitively"):
+        evaluate_spec(Spec(inputs=("A",), outputs=("a",),
+                           expressions={"a": "A"}))
+
+
 def test_an_output_with_no_expression_is_rejected():
     with pytest.raises(SpecError) as excinfo:
         evaluate_spec(Spec(inputs=("A",), outputs=("Y", "Z"),

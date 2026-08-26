@@ -443,13 +443,15 @@ def name_conflicts(wiring, target) -> list:
     that calls its inputs D3..D0 is left entirely alone. A naming rule that
     refused ordinary designs would be deleted within a week.
     """
-    ports = {name.lower() for name, _ in _ports(wiring.type_name, target)}
+    ports = _ports(wiring.type_name, target)
+    input_ports = {name.lower() for name, is_out in ports if not is_out}
+    output_ports = {name.lower() for name, is_out in ports if is_out}
     problems = []
     for port, source in sorted(wiring.inputs.items()):
         if source[0] != "signal":
             continue
         signal = source[1]
-        if signal.lower() in ports and signal.lower() != port.lower():
+        if signal.lower() in input_ports and signal.lower() != port.lower():
             problems.append(
                 f"the question's signal {signal} is wired to the "
                 f"{wiring.part_name}'s pin {port}, but the part has a pin "
@@ -460,7 +462,7 @@ def name_conflicts(wiring, target) -> list:
         if source[0] != "port":
             continue
         port = source[1]
-        if signal.lower() in ports and signal.lower() != port.lower():
+        if signal.lower() in output_ports and signal.lower() != port.lower():
             problems.append(
                 f"the question's output {signal} is driven by the "
                 f"{wiring.part_name}'s pin {port}, but the part has a pin "
