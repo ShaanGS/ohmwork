@@ -636,6 +636,11 @@ class IntentComparison:
     #: Reported separately because a run in which nothing COULD fail must not
     #: look like one in which nothing did.
     observations: int = 0
+    #: How many DID carry a number. Zero is a real and legal outcome -- an
+    #: "observe the waveforms" question states no figure to hit -- and it is
+    #: a different result from meeting five targets, so callers branch on it
+    #: rather than printing one headline over both.
+    checked: int = 0
     regimes_held: int = 0
     regimes_failed: tuple = ()
     warnings: tuple = field(default_factory=tuple)
@@ -750,17 +755,29 @@ def compare_targets(intent: Intent, experiment) -> IntentComparison:
                      + ("\n" + "\n".join(f"  {line}" for line in rest)
                         if rest else "")),
             outcomes=tuple(outcomes), observations=observations,
+            checked=intent.checkable,
             regimes_held=len(regimes) - len(broken), regimes_failed=broken)
 
     checked = intent.checkable
+    if checked:
+        summary = (f"{checked} of {len(intent.targets)} stated target(s) "
+                   f"carry a number, and every one was met; "
+                   f"{len(regimes)} regime assertion(s) held; "
+                   f"{observations} quantity(s) were reported without being "
+                   f"checked, because the question gave no number for them")
+    else:
+        # "met every one" of nothing is a sentence that reads like a pass.
+        # MEASURED on the live Q3 run, whose intent made all five quantities
+        # observations: the question asks to OBSERVE waveforms and states no
+        # figure to hit, which is legal and must be said plainly rather than
+        # dressed as a numeric result.
+        summary = (f"NO target carried a number, so nothing numeric could "
+                   f"fail or pass. What WAS checked: the circuit converged, "
+                   f"and {len(regimes)} regime assertion(s) held. All "
+                   f"{len(intent.targets)} quantities are reported unchecked.")
     return IntentComparison(
-        agrees=True,
-        summary=(f"{checked} of {len(intent.targets)} stated target(s) carry "
-                 f"a number, and LTspice met every one; "
-                 f"{len(regimes)} regime assertion(s) held; "
-                 f"{observations} quantity(s) were reported without being "
-                 f"checked, because the question gave no number for them"),
-        outcomes=tuple(outcomes), observations=observations,
+        agrees=True, summary=summary,
+        outcomes=tuple(outcomes), observations=observations, checked=checked,
         regimes_held=len(regimes), regimes_failed=())
 
 

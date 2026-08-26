@@ -133,9 +133,19 @@ def fake_executor(values, regimes_hold=True, reliable=True):
             name = entry.get("name")
             if name is None or name not in values:
                 continue
+            # A waveform measurement carries the full statistics, and its
+            # `value` is the time-weighted MEAN. Reproduced here rather than
+            # left as None, because reading a target off the wrong statistic
+            # is exactly the failure `STATISTIC` exists to prevent.
+            stats = None
+            if entry.get("kind") == "waveform_stats":
+                stats = {"mean": values[name], "rms": values[name],
+                         "min": values[name], "max": values[name],
+                         "ripple_pp": 0.0}
             results[name] = Measurement(
                 name=name, value=values[name], run=entry.get("run"),
                 backend=backend.name, source="simulation", reliable=reliable,
+                stats=stats,
                 warnings=() if reliable else ("Q1 left the active region",))
         regimes = [
             RegimeResult(assertion=entry["assert"], run=entry["run"],
@@ -359,3 +369,37 @@ def test_the_basis_travels_into_the_published_design_notes(tmp_path):
     assert "verification basis" in notes
     assert "design intent" in notes
     assert notes["verification basis"]["rationale_origin"] == "generated"
+
+
+OBSERVE_ONLY = json.dumps({
+    "topology": "regulated DC power supply",
+    "targets": [
+        {"name": "vout_waveform", "kind": "waveform", "net": "vout",
+         "quantity": "regulated DC output waveform"},
+    ],
+    "frequency": 50,
+    "notes": [],
+})
+
+
+def test_a_run_where_nothing_COULD_fail_says_so_rather_than_passing(tmp_path):
+    """MEASURED on the live Q3 run, whose intent made all five quantities
+    observations -- legally, because the question asks to OBSERVE waveforms
+    and states no figure to hit.
+
+    "met every one" of nothing is a sentence that reads like a pass. The
+    result is real and worth having: the circuit converged and its regimes
+    held. It just is not a numeric result, and must not be printed as one.
+    """
+    provider = FakeProvider([OBSERVE_ONLY, json.dumps(CIRCUIT)])
+    solution = solve_analog(
+        "Observe the output waveform of a 50 Hz supply in LTspice.",
+        provider=provider, backend=FakeBackend(),
+        executor=fake_executor({"vout_waveform": 9.0}), workdir=tmp_path)
+
+    assert solution.comparison.agrees
+    assert solution.comparison.checked == 0
+    assert "NO target carried a number" in solution.comparison.summary
+    assert "met every one" not in solution.comparison.summary
+    # ...and the basis says the same thing one layer up.
+    assert "0 target(s) carrying a number" in solution.basis.headline

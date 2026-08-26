@@ -53,10 +53,19 @@ def _make_stdout_unicode_safe() -> None:
     obviously an encoding artefact, whereas a row of question marks silently
     corrupts the one screen whose entire job is letting a human check the
     values against the image.
+
+    LINE BUFFERING is set here too, and for a related reason. A `--solve` run
+    makes several model calls and several simulator runs and can take minutes,
+    and `_LiveRun` prints the reading and each rejected attempt AS THEY
+    HAPPEN. Redirected to a file or a pipe -- which is how anyone watches a
+    long run -- Python block-buffers stdout, so all of that arrives at the end
+    or not at all. A progress report that only appears once the work is
+    finished is not a progress report.
     """
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace",
+                               line_buffering=True)
         except (AttributeError, OSError):      # already redirected, or no tty
             pass
 
@@ -199,8 +208,18 @@ def _solve_analog(args, provider) -> int:
     # Deliberately NOT the word "verified". A digital answer is checked row
     # by row against an exhaustive table; this one is checked against the
     # numbers the question named, and the two must not read alike.
-    print(f"MEETS THE INTENT after {solution.attempts} design attempt(s), "
-          f"measured by {backend.name}.")
+    #
+    # And when the question named NO number -- "observe the waveforms" is a
+    # whole class of real question -- there is a third thing to say, because
+    # "meets the intent" over zero targets reads as a pass that nothing could
+    # have failed.
+    if solution.comparison.checked:
+        print(f"MEETS THE INTENT after {solution.attempts} design "
+              f"attempt(s), measured by {backend.name}.")
+    else:
+        print(f"RAN AND STAYED IN REGIME after {solution.attempts} design "
+              f"attempt(s), measured by {backend.name}. NOTHING NUMERIC WAS "
+              f"CHECKED: the question stated no figure to hit.")
     for line in solution.comparison.summary.splitlines():
         print(f"  {line}")
     print()
@@ -211,6 +230,16 @@ def _solve_analog(args, provider) -> int:
     print()
     print(f"circuit file: {solution.asc_path}")
     print(f"designed by: {solution.provider}/{solution.model}")
+    # The claim this file can honestly make, and it is NOT the one the
+    # digital deliverable makes. A `.circ` has one run and no directives, so
+    # the file handed over IS the file the evaluator saw. An `.asc` carries
+    # the whole experiment with one run active and the rest commented, so its
+    # exact bytes were never handed to LTspice -- the per-run scratch files
+    # were. What it does have is the geometric round trip.
+    print("It carries the whole experiment: the first run active, the others "
+          "commented out to uncomment. Those exact bytes are therefore NOT "
+          "what LTspice ran — the per-run files in the working directory "
+          "were. What this file has is the emit/parse round trip.")
     print("The layout is generated mechanically: components in a grid, wired "
           "by net label rather than routed. Correct, not pretty.")
     _report_pool_incidents(provider)
