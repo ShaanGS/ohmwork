@@ -392,14 +392,21 @@ def _mount_static(app: FastAPI, static_dir) -> None:
     Optional on purpose: the API is the product and must be runnable and
     testable without a node toolchain anywhere near it.
 
-    THREE PLACES ARE TRIED, and the reason is a bug the first real Docker
-    build found. `__file__/../..` is the source tree only for an EDITABLE
-    install, which is how this repo is developed; in an image the package is
-    installed properly and that path points inside site-packages, where no
-    `web/dist` exists. The API kept working and the page went blank -- a
-    failure that cannot happen on the machine it was written on. So the
-    working directory (the container's `/app`) and an explicit
-    `OHMWORK_STATIC` are tried too, and the environment wins.
+    THREE PLACES ARE TRIED, and the honest account of why is worth more than
+    the tidy one. `__file__/../..` was the only lookup, and it is the source
+    tree only for an EDITABLE install -- which is how this repo is developed.
+    That looked like a bug waiting for an image to expose it, so the image was
+    changed and this was widened at the same time. The image then proved the
+    prediction WRONG: `/app` is on `sys.path` ahead of site-packages there, so
+    `__file__` still resolved into `/app` and the original lookup would have
+    worked.
+
+    It is kept, and the reason is not the bug that did not happen. The single
+    lookup was correct only by way of a coincidence nobody chose -- the
+    working directory and the install layout happening to line up. An explicit
+    `OHMWORK_STATIC`, which the Dockerfile sets, does not depend on that. CI
+    now fetches "/" and requires the real page, so the next arrangement that
+    breaks it is caught rather than reasoned about.
     """
     from fastapi.staticfiles import StaticFiles
 

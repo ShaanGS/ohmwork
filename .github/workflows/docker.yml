@@ -126,8 +126,19 @@ jobs:
       - name: A container with no password must REFUSE to start
         # Fail closed. The one misconfiguration whose symptom is everything
         # working perfectly, for everyone, on somebody else's free-tier keys.
+        #
+        # THE EXIT CODE IS CAPTURED, NOT PIPED. This check was written as
+        # `if docker run ... | tee /tmp/out; then fail; fi`, and a pipeline's
+        # status is its LAST command -- tee, which always succeeds. So it
+        # reported "it started without a password" over a container that had
+        # refused to start with exactly the right error. The check could
+        # never have passed, and it took until every earlier step went green
+        # for anyone to find out.
         run: |
-          if docker run --rm ohmwork:ci 2>&1 | tee /tmp/out; then
-            echo "it started without a password"; exit 1
-          fi
+          set +e
+          docker run --rm ohmwork:ci >/tmp/out 2>&1
+          code=$?
+          set -e
+          cat /tmp/out
+          test "$code" != "0" || { echo "it started with no password"; exit 1; }
           grep -q "OHMWORK_PASSWORD" /tmp/out

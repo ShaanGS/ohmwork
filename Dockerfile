@@ -59,10 +59,11 @@ COPY --from=web /web/dist ./web/dist
 # HOME must be writable: Logisim writes a preferences file on first run, and
 # a read-only home turns that into a startup failure with an unrelated-looking
 # message.
-# OHMWORK_STATIC is explicit rather than inferred. The package is installed
-# properly here, so the path relative to the module points into
-# site-packages -- which is exactly the lookup that worked on a developer's
-# editable install and would have served a blank page from this image.
+# OHMWORK_STATIC is explicit rather than inferred. Without it the page is
+# found only because /app happens to be on sys.path ahead of site-packages,
+# so `__file__/../../web/dist` happens to resolve here -- a coincidence
+# between the working directory and the install layout that nobody chose.
+# Stating the path costs nothing and does not depend on it.
 ENV HOME=/tmp \
     OHMWORK_STATIC=/app/web/dist \
     PORT=7860 \
