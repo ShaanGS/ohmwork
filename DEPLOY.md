@@ -16,6 +16,19 @@ that checks the answer. That rules out Vercel, Netlify and every serverless
 platform: no JVM, and a solve takes 10–60 seconds, past their function limits.
 A platform that runs a **Docker container** is the requirement.
 
+### If Vercel offers to import this, decline
+
+Pushing this repository makes Vercel email *"1 new project available to
+import — web · vite"*. It has detected the React frontend in `web/` and it is
+right that it can build it. Importing it would deploy **the page with no
+server behind it**: no Logisim, no `/api/solve`, no password gate. The login
+box would render, and nothing behind it would work.
+
+That failure is worse than no deployment, because it looks like one. The same
+goes for Netlify, Cloudflare Pages, and every other static or serverless host.
+The requirement is a container that runs a JVM for 10–60 seconds per request,
+and it is not negotiable — it is the thing that does the verifying.
+
 The analog half is not hosted anywhere and that is deliberate. LTspice is a
 Windows GUI application, and ngspice is not a substitute because it cannot read
 LTspice's device libraries. An analog answer from a Linux host could only ever

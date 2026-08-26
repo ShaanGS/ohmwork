@@ -77,4 +77,10 @@ EXPOSE 7860
 HEALTHCHECK --interval=60s --timeout=5s --start-period=20s \
   CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:7860/api/health').read()"
 
-CMD ["xvfb-run", "-a", "python", "-m", "ohmwork.server"]
+COPY deploy/entrypoint.sh /usr/local/bin/ohmwork-entrypoint
+RUN chmod +x /usr/local/bin/ohmwork-entrypoint
+
+# Not `xvfb-run`: see deploy/entrypoint.sh for the measurement that changed
+# this. In short, the server must be PID 1 so that its output is the
+# container's log and `docker stop` reaches it.
+CMD ["/usr/local/bin/ohmwork-entrypoint"]

@@ -54,6 +54,17 @@ jobs:
           docker run --rm --entrypoint sh ohmwork:ci -c \
             'xvfb-run -a java -jar "$OHMWORK_LOGISIM" --version 2>&1 | head -5 || true'
 
+      - name: The server must say something when it starts
+        # A container that is UP, bound to nothing, and silent in `docker
+        # logs` is the hardest failure to diagnose there is -- and it is what
+        # the second build produced. Running the server in the FOREGROUND for
+        # a few seconds puts whatever it says on screen, whether that is a
+        # uvicorn banner or a traceback, before anything depends on it.
+        run: |
+          docker run --rm -e OHMWORK_PASSWORD=ci-only-password \
+            --entrypoint sh ohmwork:ci -c \
+            'timeout 20 /usr/local/bin/ohmwork-entrypoint 2>&1 | head -20; exit 0'
+
       - name: It must serve, refuse anonymous solves, and stay up
         # THE LOGS ARE PRINTED WHATEVER HAPPENS, and that is the point. The
         # first real run of this workflow caught the container dying at
