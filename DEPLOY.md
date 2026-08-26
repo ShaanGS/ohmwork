@@ -160,6 +160,10 @@ option refuses analog questions permanently, because LTspice is a Windows GUI
 application and ngspice cannot read its device libraries. On that machine both
 loops can run against the real simulators.
 
+**Step by step: `deploy/TUNNEL.md`.** It needs no container at all — the
+server runs directly, the way it already runs on the machine it was developed
+on.
+
 Be precise about what that costs, because it is not free: `server.py` is
 digital-only today. `domain.classify` and `analog.solve_analog` exist and are
 tested, but nothing wires them into a request path, and doing so means
