@@ -39,9 +39,20 @@ jobs:
         # depends on work in there. Logisim is Java, driven headless under
         # xvfb, and both halves of that are assumptions until something runs
         # them.
+        #
+        # NO `|| true` ON THE xvfb-run ITSELF, and that matters: it used to
+        # have one, and that is how this step passed over an image that could
+        # not start at all. `xvfb-run` was failing with "xauth command not
+        # found", the `|| true` swallowed it, and only `java -version` had to
+        # succeed. A check written so that its interesting half cannot fail
+        # is not a check. Logisim's own exit code is still not trusted -- it
+        # comes back empty on a successful run -- so what is asserted is that
+        # xvfb-run runs something, and that the jar downloaded.
         run: |
+          docker run --rm --entrypoint sh ohmwork:ci -c 'xvfb-run -a java -version'
+          docker run --rm --entrypoint sh ohmwork:ci -c 'test -s "$OHMWORK_LOGISIM"'
           docker run --rm --entrypoint sh ohmwork:ci -c \
-            'xvfb-run -a java -jar "$OHMWORK_LOGISIM" --version 2>&1 | head -5 || true; java -version'
+            'xvfb-run -a java -jar "$OHMWORK_LOGISIM" --version 2>&1 | head -5 || true'
 
       - name: It must serve, refuse anonymous solves, and stay up
         # THE LOGS ARE PRINTED WHATEVER HAPPENS, and that is the point. The

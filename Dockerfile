@@ -30,8 +30,15 @@ ENV PATH="/opt/java/openjdk/bin:${PATH}"
 # xvfb: Logisim is a desktop application being driven in --tty mode, and
 # giving it a virtual display is cheaper than gambling on every AWT call
 # being headless-safe. Measured cost: a few MB and no measurable latency.
+#
+# xauth IS REQUIRED and is easy to miss: Debian's xvfb only RECOMMENDS it, and
+# --no-install-recommends is used here, so it does not arrive. Without it
+# `xvfb-run` exits immediately with "xauth command not found" -- which is what
+# the first real build of this image did, in 150 milliseconds, with the API
+# never coming up at all. Found in CI, which is the entire reason that
+# workflow runs before a deploy does.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends xvfb curl ca-certificates \
+ && apt-get install -y --no-install-recommends xvfb xauth curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 # PINNED. This is the evaluator every published number in this project was
