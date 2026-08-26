@@ -34,10 +34,27 @@ Windows GUI application, and ngspice is not a substitute because it cannot read
 LTspice's device libraries. An analog answer from a Linux host could only ever
 be unverified, which is exactly what this project exists to avoid.
 
-## Recommended: Hugging Face Spaces (free, no card)
+## Hugging Face Spaces — Docker is now a PAID SDK
 
-Free CPU tier, no payment method, enough RAM for a JVM, secrets built in, and
-it serves on port 7860 — which is what the container listens on.
+**Observed 2026-08-26 on the Create-a-Space page: the Docker SDK card is
+greyed out and badged "Paid".** Static and Gradio are free; Docker is not.
+That removes the free-and-no-card recommendation this file used to make, and
+it is recorded rather than quietly edited because the reasoning behind that
+recommendation was sound and only its premise changed.
+
+Everything else about Hugging Face still fits — enough RAM for a JVM, secrets
+built in, and it serves on port 7860, which is what the container listens on.
+`deploy/push-space.sh` works unchanged the moment the SDK is available. So
+this is a price question now, not an engineering one: check what the Docker
+SDK costs and decide.
+
+**Do not work around it with a free Gradio Space.** A Gradio Space is Python
+with an apt list, so the temptation is to install a JRE there and shell out to
+Logisim. Logisim Evolution 4.1.0 needs **Java 21**, the Space base image ships
+an older default JRE, and the whole verification story rests on the evaluator
+being the pinned version every published number was measured against. A JRE
+that "probably works" is not a foundation for a tool whose entire claim is
+that an outside tool checked the answer.
 
 ### 1. Create the Space
 
@@ -118,10 +135,36 @@ proxies `/api` to that server, so you get hot reload against the real backend.
   requires HTTPS. Hugging Face terminates TLS for you. Running locally over
   plain HTTP, leave it unset.
 
-## If you would rather not use Hugging Face
+## The other hosts
 
-Anything that runs a Dockerfile works. Render's free tier does, with the
-caveat that it sleeps after 15 minutes idle and a cold JVM start makes the
-first request of the day slow. Fly.io and Railway are better but both want a
-card. Nothing in the container is Hugging Face specific except the port, which
-is an environment variable.
+Anything that runs a Dockerfile works; nothing in the container is Hugging
+Face specific except the port, and that is an environment variable. Prices and
+free tiers move, so treat all of this as "check before committing":
+
+| host | the catch |
+|---|---|
+| Render | free tier runs Docker, sleeps after ~15 min idle, and a cold JVM start makes the first request of the day slow |
+| Fly.io, Railway | better behaved, both want a card |
+| Google Cloud Run | generous free allowance, needs a billing account |
+
+### The genuinely different option: a tunnel from the machine that already has the simulators
+
+Run the container — or just `python -m ohmwork.server` — on the Windows
+machine where LTspice already lives, and expose it with a Cloudflare Tunnel
+(free, and a named tunnel gives a stable hostname). For an audience of five
+people this is not a compromise, and it is the only option with a property no
+Linux host can ever have:
+
+**it is the only place the ANALOG half could also be served.** Every hosted
+option refuses analog questions permanently, because LTspice is a Windows GUI
+application and ngspice cannot read its device libraries. On that machine both
+loops can run against the real simulators.
+
+Be precise about what that costs, because it is not free: `server.py` is
+digital-only today. `domain.classify` and `analog.solve_analog` exist and are
+tested, but nothing wires them into a request path, and doing so means
+deciding what a browser sees while LTspice runs for several seconds. The
+tunnel makes analog POSSIBLE, which is more than any of the rows above can
+say; it does not make it done.
+
+The obvious cost is the obvious one: the machine has to be awake.

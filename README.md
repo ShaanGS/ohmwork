@@ -390,9 +390,19 @@ colour, because that is the one failure none of this machinery can catch: a
 misread question produces a specification and a circuit that agree perfectly
 with each other.
 
-Deployment is one container -- `Dockerfile` and `DEPLOY.md` -- and the image is
-built and exercised by CI on every push, because it is the one artefact here
-that no test can check.
+Deployment is one container -- `Dockerfile` and `DEPLOY.md`. CI builds it on
+every push and then, inside it, runs Logisim under a real display, requires an
+anonymous solve to get a 401, requires the built page to be served, and
+requires a container with no password to refuse to start. That workflow's
+first four runs were all red, each for a different real defect, which is
+exactly what it is for: the image is the one artefact here that no unit test
+can check, and its first execution should not be a live deploy.
+
+**Where it runs is not settled.** The requirement is a host that runs a
+Dockerfile with a JVM for 10-60 seconds per request, which rules out every
+static and serverless platform. Hugging Face Spaces was the recommendation
+until its Docker SDK became paid; `DEPLOY.md` carries the current options and
+what each one costs.
 
 ---
 
