@@ -33,6 +33,7 @@ it wants TWO independent signals, or one naming a simulator outright.
 """
 
 import re
+from dataclasses import dataclass
 
 #: Naming one of these is decisive on its own. A question that asks for
 #: LTspice is asking for something this endpoint cannot do, whatever else it
@@ -266,3 +267,153 @@ def named_parts(question: str) -> list[str]:
             if type_name not in found:
                 found.append(type_name)
     return found
+
+
+# ------------------------------------------------- the analog half
+
+#: Digital vocabulary. Same discipline as ANALOG_WORDS: each is ordinary in a
+#: digital question and rare in an analog one, and no single word decides
+#: anything on its own. "decoder" is here and also appears in the 7447
+#: question, which is exactly the point -- that question IS digital.
+DIGITAL_WORDS = (
+    "logic gate", "truth table", "boolean", "karnaugh", "k-map",
+    "sum of products", "product of sums", "encoder", "decoder",
+    "multiplexer", "demultiplexer", "adder", "subtractor", "comparator",
+    "parity", "nand", "nor", "xor", "xnor", "inverter gate", "and gate",
+    "or gate", "not gate", "bcd", "gray code", "seven-segment",
+    "seven segment", "combinational", "logic circuit", "logic levels",
+    "active-low", "active low", "active-high", "active high",
+)
+
+#: Naming this is decisive on its own, the way LTspice is for the analog side.
+DIGITAL_SIMULATORS = ("logisim",)
+
+#: Analog devices whose SYMBOL geometry this project has never measured. The
+#: pin table refuses anything unmeasured, so a question built on one cannot be
+#: drawn at all -- and that is a missing MEASUREMENT, not a missing feature.
+#: The list shrinks only when a real `.asc` containing the part arrives.
+UNMEASURED_ANALOG = (
+    "op-amp", "opamp", "op amp", "operational amplifier", "741", "555",
+    "mosfet", "jfet", "igbt", "thyristor", "scr", "triac", "diac", "ujt",
+    "optocoupler", "opto-coupler", "photodiode", "phototransistor",
+    "transformer", "relay", "crystal oscillator", "voltage regulator ic",
+    "7805", "7812", "lm317", "ic 7805", "ne555",
+)
+
+UNMEASURED_ANALOG_ADVICE = (
+    "Every SYMBOL this tool can place had its pin geometry MEASURED from a "
+    "real LTspice file, and it refuses to guess at one it has never seen. "
+    "What it can build today: resistors, capacitors, inductors, voltage "
+    "sources, diodes, zeners and bipolar transistors."
+)
+
+DIGITAL_ADVICE = (
+    "This is the ANALOG loop, which designs circuits for LTspice. A digital "
+    "logic question is answered by the digital loop instead, which builds "
+    "gate-level circuits and checks them against an exhaustive truth table "
+    "computed by Logisim -- a far stronger guarantee than anything analog "
+    "verification can offer."
+)
+
+
+def digital_evidence(question: str) -> list[str]:
+    """Every digital signal found in the question, verbatim and in order.
+
+    The mirror of `analog_evidence`, and returned for the same reason: a
+    refusal that cannot show its reasoning is not one a reader can disagree
+    with.
+    """
+    hits = []
+    for name in (*DIGITAL_SIMULATORS, *DIGITAL_WORDS):
+        match = re.search(rf"\b{re.escape(name)}\b", question, re.IGNORECASE)
+        if match:
+            hits.append((match.start(), match.group(0)))
+    seen, unique = set(), []
+    for _, item in sorted(hits):
+        if item.lower() not in seen:
+            seen.add(item.lower())
+            unique.append(item)
+    return unique
+
+
+def names_a_digital_simulator(question: str) -> str | None:
+    for name in DIGITAL_SIMULATORS:
+        if re.search(rf"\b{re.escape(name)}\b", question, re.IGNORECASE):
+            return name
+    return None
+
+
+def check_analog(question: str) -> None:
+    """Refuse a question the ANALOG loop cannot honestly answer.
+
+    The mirror of `check_digital`, and it exists for the mirror of that
+    incident: a digital question that reached this loop would be handed to
+    LTspice, which has no gates, and the failure would surface as a pin-table
+    rejection four layers down -- true, expensive and unhelpful.
+
+    The asymmetry of costs is the same. A missed digital question produces a
+    confident answer to something else; a false refusal produces an annoyed
+    person who rephrases, and the message says exactly what tripped it.
+    """
+    parts = _found(question, UNMEASURED_ANALOG)
+    if parts:
+        raise DomainError(
+            f"This question is built around a component this tool has never "
+            f"measured: {', '.join(parts)}.\n\n{UNMEASURED_ANALOG_ADVICE}")
+
+    simulator = names_a_digital_simulator(question)
+    evidence = digital_evidence(question)
+    if simulator is None and len(evidence) < 2:
+        return
+
+    raise DomainError(
+        f"This reads as a DIGITAL logic question, so it was refused before "
+        f"anything was designed.\n\nWhat the question says: "
+        f"{', '.join(evidence[:8])}\n\n{DIGITAL_ADVICE}")
+
+
+@dataclass(frozen=True)
+class Reading:
+    """Which loop a question was routed to, and the evidence for it.
+
+    Disclosure rather than a silent decision. Routing is a guess made from
+    words, and the loop it picks then runs its OWN check_* -- so a misroute
+    degrades to a refusal that names the mistake, never to a confident answer
+    from the wrong half of the tool.
+    """
+
+    domain: str                  # "analog" | "digital"
+    reason: str
+
+    def render(self) -> str:
+        return f"read as an {self.domain.upper()} question: {self.reason}"
+
+
+def classify(question: str) -> Reading:
+    """Route a question to the analog or the digital loop.
+
+    Naming a simulator decides it outright -- a question that says LTspice is
+    asking for LTspice whatever else it says. Otherwise the two evidence
+    lists are counted against each other, and a tie goes to digital, which is
+    the half with the stronger verification: if the routing is wrong there,
+    `check_digital` refuses and says why, which is a better failure than an
+    analog answer to a logic question.
+    """
+    analog_sim = names_a_simulator(question)
+    digital_sim = names_a_digital_simulator(question)
+    if analog_sim and not digital_sim:
+        return Reading("analog", f"it names {analog_sim}")
+    if digital_sim and not analog_sim:
+        return Reading("digital", f"it names {digital_sim}")
+
+    analog = analog_evidence(question)
+    digital = digital_evidence(question)
+    if len(analog) > len(digital):
+        return Reading("analog", ", ".join(analog[:6]))
+    if digital:
+        return Reading("digital", ", ".join(digital[:6]))
+    return Reading(
+        "digital",
+        "nothing in it names a simulator or an analog quantity, so it was "
+        "read as digital by default -- the half whose answers are checked "
+        "against an exhaustive truth table")

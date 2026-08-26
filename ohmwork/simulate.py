@@ -116,6 +116,12 @@ def _log_tail(log_path: Path, lines: int = 15) -> str:
 
 class LTspiceBackend:
     name = "ltspice"
+    #: An OUTSIDE simulator computed this, so a bug in our emitter or our
+    #: parser shows up as disagreement rather than as agreement with itself.
+    #: Declared rather than left to a getattr default: every other backend in
+    #: this project states its standing, and a backend that says nothing is
+    #: indistinguishable from one nobody checked.
+    verification = "external"
 
     def __init__(self, exe: Path | None = None):
         self.exe = Path(exe) if exe else locate_ltspice()
@@ -150,6 +156,12 @@ class LTspiceBackend:
 
 class NgspiceBackend:
     name = "ngspice"
+    #: An OUTSIDE simulator computed this, so a bug in our emitter or our
+    #: parser shows up as disagreement rather than as agreement with itself.
+    #: Declared rather than left to a getattr default: every other backend in
+    #: this project states its standing, and a backend that says nothing is
+    #: indistinguishable from one nobody checked.
+    verification = "external"
 
     def __init__(self, exe: Path | None = None):
         exe = exe or os.environ.get("OHMWORK_NGSPICE") or shutil.which("ngspice")

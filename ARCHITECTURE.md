@@ -51,12 +51,18 @@ library/<slug>/                       manifest.json + question.json + files
 ```
 
 Above that sits the **design loop**, which is how a question typed in plain
-English reaches the gate at all:
+English reaches the gate at all. There are two of them, and `domain.classify`
+decides which — a guess made from the question's words, disclosed rather than
+taken silently, and safe to get wrong because the loop it picks runs its own
+domain check and refuses with the reason:
 
 ```
 question text
   |
-  |  domain.py    refuse what this loop cannot answer, before a token is spent
+  |  domain.py    classify -> analog or digital, and refuse outright what
+  |               neither loop can honestly answer. Before a token is spent.
+  |
+  +-- DIGITAL ------------------------------------------------------------
   |  spec.py      the model writes one boolean expression per output, from the
   |               question's WORDS. No gates. Its signal names are authoritative.
   |  design.py    the plan is DERIVED in Python; the model writes only
@@ -64,9 +70,22 @@ question text
   |  partcheck.py for a question naming a measured part: evaluate a BARE one
   |               first, and require the design to reproduce it through the
   |               wiring. The chip is its own reference; no datasheet is recalled
+  |
+  +-- ANALOG -------------------------------------------------------------
+  |  intent.py    the model writes the numeric TARGETS from the question's
+  |               words. No components. Its net names are authoritative, the
+  |               plan and the regime assertions are DERIVED from it and from
+  |               the parts list, and a tolerance wide enough to admit any
+  |               plausible circuit is refused
+  |  analog.py    the same design/gate/retry loop, verified by running LTspice
+  |               on the emitted file and checking its numbers against the
+  |               intent. NO ORACLE EXISTS HERE -- see section 4
   v
 question.json  ->  the gate above
 ```
+
+`basis.py` holds the one shape all three verification stories render through,
+so a reader can always tell which claim an answer is making.
 
 Supporting modules: `symbols.py` and `logisim_symbols.py` hold the measured pin
 tables (and refuse anything unmeasured); `parts.py` holds the device policy;
@@ -401,6 +420,31 @@ the question. The spec basis answers that with printed algebra; the part basis
 with a printed wiring map. One slice of it is closed mechanically — a signal
 whose own name names a pin of the part must be on that pin, which is a
 constraint from outside the wiring and so is not self-confirming.
+
+**Analog verification is WEAKER than digital, and nothing may blur that.** A
+digital answer is checked against an exhaustive truth table: every row
+reproduced by an outside tool, nothing left over. Analog has no such table, so
+`intent.py` checks the three things that exist — the circuit converged, its
+devices stayed in the operating regimes the results depend on, and the numbers
+the question NAMED came out where the question said they should. Two gaps
+follow, and both are printed with every analog result:
+
+* the same misreading gap the other bases have — the intent is the model's
+  reading of the question, so the reading is output;
+* one with **no digital counterpart: meeting a target is not being a good
+  design.** A regulator that hits 9.00 V while dissipating six watts in the
+  pass transistor, or with ripple nobody asked about, satisfies every check
+  here. Correct truth-table rows really are the whole answer; correct
+  measurements are not.
+
+Three defences keep the analog check from becoming decorative. A tolerance is
+CAPPED (`MAX_TOLERANCE_PCT`), because one wide enough to admit any plausible
+circuit cannot fail. An intent with no targets at all is refused — the analog
+shape of `check_spec_has_logic`. And the regime assertions are DERIVED from
+the parts list rather than requested, so a design cannot omit the one that
+would have failed. A target the question gave no number for is an
+OBSERVATION: measured, reported, and counted separately, because a run in
+which nothing COULD fail must not read like one in which nothing did.
 
 **The part basis predicts with our own gate logic, deliberately.** Steps 3 and 4
 both read the same nets, so they agree about a swapped signal; what they do not

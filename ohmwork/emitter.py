@@ -206,15 +206,30 @@ def _all_pins(components) -> set[str]:
     return pins
 
 
+def _unknown_pin(net, entry, valid_pins) -> str:
+    """Say which pins the component DOES have, not merely that this is wrong.
+
+    MEASURED on a live analog solve: a model wrote "Q1.base" for a transistor
+    whose pins are C, B and E, and the rejection told it the pin did not
+    exist without saying what would. That is a whole retry spent guessing at
+    a vocabulary the message was already holding.
+    """
+    ref = entry.split(".", 1)[0]
+    theirs = sorted(pin.split(".", 1)[1] for pin in valid_pins
+                    if pin.startswith(f"{ref}."))
+    if theirs:
+        return (f"net {net!r} references {entry!r}, which is not a pin of "
+                f"{ref}. Its pins are: {', '.join(theirs)}")
+    return (f"net {net!r} references {entry!r}, and this circuit has no "
+            f"component named {ref}")
+
+
 def _check_net_entries(nets, valid_pins) -> set[str]:
     used = set()
     for net, entries in nets.items():
         for entry in entries:
             if entry not in valid_pins:
-                raise CircuitError(
-                    f"net {net!r} references {entry!r}, which is not "
-                    "a pin of any component"
-                )
+                raise CircuitError(_unknown_pin(net, entry, valid_pins))
             if entry in used:
                 raise CircuitError(f"pin {entry} appears in more than one net")
             used.add(entry)

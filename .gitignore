@@ -43,3 +43,7 @@ site/
 # second copy of the app in the repo, free to drift from its source.
 web/node_modules/
 web/dist/
+
+# Scratch output from local --solve runs.
+.scratch_*/
+.scratch_*.log

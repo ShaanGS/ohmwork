@@ -62,6 +62,7 @@ quietly becoming unpredictable.
 from dataclasses import dataclass
 from itertools import product
 
+from ohmwork.basis import Basis
 from ohmwork.spec import SpecTable
 
 #: The part's ref inside a probe circuit. Not a port name of anything, so it
@@ -103,39 +104,10 @@ class WiringError(Exception):
 
 
 # ------------------------------------------------------------ the basis
-
-@dataclass(frozen=True)
-class Basis:
-    """What a verified circuit was actually checked AGAINST.
-
-    A part-verified answer and a spec-verified answer are different claims,
-    and a reader who cannot tell them apart has been shown the stronger one.
-    So the basis travels with the solution, and the CLI, the web UI and the
-    manifest all render these three strings rather than each inventing their
-    own wording.
-    """
-
-    #: "spec" | "part". The machine-readable half, for a manifest.
-    kind: str
-    #: One line: what the circuit was required to reproduce, and who computed
-    #: the reference.
-    headline: str
-    #: The thing a human is asked to check, because nothing downstream can.
-    reading: str
-    #: What this basis cannot prove. Never empty: a claim with no stated edge
-    #: reads as a claim with none.
-    limit: str
-    #: The reading flattened to one line, for a design note. The manifest's
-    #: design_notes are single-line `choice` strings, and flattening at the
-    #: source keeps the published note and the printed map from being two
-    #: independently-written accounts of the same fact.
-    summary: str
-
-    def to_dict(self) -> dict:
-        return {"kind": self.kind, "headline": self.headline,
-                "reading": self.reading, "limit": self.limit,
-                "summary": self.summary}
-
+#
+# `Basis` itself lives in ohmwork/basis.py: an analog result needs the same
+# shape, and nothing describing a voltage regulator should have to import a
+# module about seven-segment displays to say what it was checked against.
 
 SPEC_LIMIT = (
     "that the specification is the right reading of the question. The "

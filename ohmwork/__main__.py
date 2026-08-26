@@ -77,13 +77,9 @@ def _solve(args) -> int:
     ohmwork/partcheck.py.
     """
     from ohmwork.design import DesignError, solve
-    from ohmwork.domain import DomainError
+    from ohmwork.domain import DomainError, classify
     from ohmwork.llm import LLMError, get_provider
     from ohmwork.logisim_backend import best_available_backend
-
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    backend = best_available_backend()
 
     try:
         provider = get_provider()
@@ -92,6 +88,25 @@ def _solve(args) -> int:
         return 1
 
     print(f"question: {args.solve}")
+
+    # WHICH HALF of the tool answers this is a guess made from words, so it
+    # is disclosed rather than taken silently. A misroute is safe: the loop
+    # it picks runs its own domain check and refuses with the reason, which
+    # is a far better failure than a confident answer from the wrong half.
+    if args.domain:
+        print(f"routing: {args.domain.upper()}, because you said so")
+        domain = args.domain
+    else:
+        reading = classify(args.solve)
+        print(f"routing: {reading.render()}")
+        domain = reading.domain
+    if domain == "analog":
+        return _solve_analog(args, provider)
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    backend = best_available_backend()
+
     print(f"evaluator: {backend.name} [{backend.verification}]")
     # WHICH model answers is a fact about the result, so it is printed
     # before the result. A pool additionally says who is NOT in it: two live
@@ -105,9 +120,10 @@ def _solve(args) -> int:
               "OHMWORK_LOGISIM.")
     print()
 
+    live = _LiveRun()
     try:
         solution = solve(args.solve, provider=provider, backend=backend,
-                         workdir=out_dir)
+                         workdir=out_dir, progress=live)
     except DomainError as exc:
         # Refused, not failed. Printed to stdout rather than stderr for the
         # same reason it renders differently on the web: it is an ANSWER to
@@ -118,23 +134,7 @@ def _solve(args) -> int:
         print(f"no verified circuit: {exc}", file=sys.stderr)
         return 1
 
-    basis = solution.basis
-    print("CHECKED AGAINST: " + basis.headline)
-    print()
-    print("THE READING — this is what the circuit was verified AGAINST.")
-    print("If this misreads the question, every check below still passes.")
-    print()
-    for line in basis.reading.splitlines():
-        print(f"    {line}")
-    print()
-    # An unstated limit reads as no limit. The two bases have different ones,
-    # and a reader who cannot tell them apart has been shown the stronger.
-    print(f"NOT established by any check here: {basis.limit}")
-    print()
-
-    for index, failure in solution.failed_attempts:
-        first = failure.splitlines()[0]
-        print(f"  attempt {index} was rejected: {first}")
+    _print_basis(solution.basis, already=live.reading)
     print(f"VERIFIED in {solution.attempts} design attempt(s) by "
           f"{solution.table.backend}.")
     print(f"  {solution.comparison.summary.splitlines()[0]}")
@@ -151,6 +151,127 @@ def _solve(args) -> int:
           "gates in columns by logic depth. Correct, not pretty.")
     _report_pool_incidents(provider)
     return 0
+
+
+def _solve_analog(args, provider) -> int:
+    """--solve, routed to the ANALOG loop: a question in, an `.asc` out.
+
+    Prints the same three things the digital path does and in the same order
+    -- what it was checked against, the reading, and what that does NOT
+    establish -- because an analog answer makes a WEAKER claim than a digital
+    one and a reader who cannot tell them apart has been shown the stronger.
+    """
+    from ohmwork.analog import solve_analog
+    from ohmwork.design import DesignError
+    from ohmwork.domain import DomainError
+    from ohmwork.llm import LLMError
+    from ohmwork.simulate import LTspiceBackend, SimulationError
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        backend = LTspiceBackend()
+    except FileNotFoundError as exc:
+        # Not a refusal and not a design failure: this half of the tool needs
+        # a Windows GUI application installed, and saying so is more useful
+        # than any message about the question.
+        print(f"no analog evaluator: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"evaluator: {backend.name} [{backend.verification}]")
+    print(f"model: {describe_provider(provider)}")
+    print()
+
+    live = _LiveRun()
+    try:
+        solution = solve_analog(args.solve, provider=provider,
+                                backend=backend, workdir=out_dir,
+                                progress=live)
+    except DomainError as exc:
+        print(f"refused: {exc}")
+        return 2
+    except (DesignError, SimulationError, LLMError) as exc:
+        print(f"no circuit meeting the intent: {exc}", file=sys.stderr)
+        return 1
+
+    _print_basis(solution.basis, already=live.reading)
+
+    # Deliberately NOT the word "verified". A digital answer is checked row
+    # by row against an exhaustive table; this one is checked against the
+    # numbers the question named, and the two must not read alike.
+    print(f"MEETS THE INTENT after {solution.attempts} design attempt(s), "
+          f"measured by {backend.name}.")
+    for line in solution.comparison.summary.splitlines():
+        print(f"  {line}")
+    print()
+
+    print(analysis.render_report(
+        solution.experiment, solution.question_object.plan,
+        devices=solution.question_object.devices))
+    print()
+    print(f"circuit file: {solution.asc_path}")
+    print(f"designed by: {solution.provider}/{solution.model}")
+    print("The layout is generated mechanically: components in a grid, wired "
+          "by net label rather than routed. Correct, not pretty.")
+    _report_pool_incidents(provider)
+    return 0
+
+
+class _LiveRun:
+    """Prints a solve AS IT HAPPENS, and remembers what it printed.
+
+    MEASURED on the first live analog run of the real Q3: four design
+    attempts, several minutes, and a failure printed nothing but the last
+    error -- not the reading, not the attempts. The reading is the most
+    useful thing a person can see after a FAILED run, because it is what
+    tells them whether the loop misunderstood the question, and it was the
+    one thing missing.
+
+    It remembers the reading so the summary at the end does not print it
+    twice. A note rendered twice on the one card a person is asked to read
+    carefully is a real defect; the viewer and the web UI both shipped it
+    once.
+    """
+
+    def __init__(self):
+        self.reading = None
+
+    def __call__(self, name, data):
+        if name == "reading":
+            self.reading = data.get("intent") or data.get("spec") or ""
+            print("THE READING — what was understood from your question.")
+            print("Nothing below can tell that this misreads it.")
+            print()
+            for line in self.reading.splitlines():
+                print(f"    {line}")
+            print()
+        elif name == "attempt" and data.get("status") == "rejected":
+            first = str(data.get("failure", "")).splitlines()[:1]
+            print(f"  attempt {data['index']} was rejected: "
+                  f"{first[0] if first else 'no reason given'}")
+        sys.stdout.flush()
+
+
+def _print_basis(basis, already=None) -> None:
+    """What it was checked against, the reading, and the limit -- in that
+    order, and the same order for every loop. An unstated limit reads as no
+    limit.
+
+    `already` is the reading a live run has printed. When the basis's reading
+    is that same text it is not repeated; when it differs -- a part basis
+    checks a WIRING MAP that did not exist when the reading was streamed --
+    it is new information and is printed.
+    """
+    print("CHECKED AGAINST: " + basis.headline)
+    print()
+    if basis.reading.strip() != (already or "").strip():
+        print("WHAT THE CIRCUIT WAS CHECKED AGAINST, in full:")
+        print()
+        for line in basis.reading.splitlines():
+            print(f"    {line}")
+        print()
+    print(f"NOT established by any check here: {basis.limit}")
+    print()
 
 
 def describe_provider(provider) -> str:
@@ -264,6 +385,11 @@ def main(argv=None) -> int:
                         help="date recorded in the manifest (default: today). "
                              "Passed in so regenerating an unchanged question "
                              "produces an identical file")
+    parser.add_argument(
+        "--domain", choices=("analog", "digital"),
+        help="override which loop answers --solve. Routing is a guess made "
+             "from the question's words and it says which way it went; this "
+             "is how you correct it.")
     parser.add_argument("--solve", metavar="QUESTION",
                         help="a digital question in plain English. Designs a "
                              "circuit for it and does not return until "
