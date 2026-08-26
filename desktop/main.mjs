@@ -1,0 +1,192 @@
+import { app, BrowserWindow, dialog, ipcMain, net, safeStorage, session } from "electron";
+import { createServer } from "node:net";
+import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+let backend = null;
+let backendPort = null;
+const PROVIDER_KEYS = new Set([
+  "GROQ_API_KEY", "GEMINI_API_KEY", "MISTRAL_API_KEY",
+  "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"
+]);
+
+function resourcePath(...parts) {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, ...parts)
+    : path.join(here, "..", ...parts);
+}
+
+function settingsPath() {
+  return path.join(app.getPath("userData"), "secrets.json");
+}
+
+async function readStoredKeys() {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Your operating system's secure credential storage is unavailable.");
+  }
+  try {
+    const encrypted = await readFile(settingsPath(), "utf8");
+    const values = JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, "base64")));
+    return Object.fromEntries(Object.entries(values).filter(([name, value]) =>
+      PROVIDER_KEYS.has(name) && typeof value === "string" && value.length >= 8));
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw new Error("Ohmwork could not read its encrypted local model-key settings.");
+  }
+}
+
+async function writeStoredKey(name, value) {
+  if (!PROVIDER_KEYS.has(name)) throw new Error("That is not a supported model provider.");
+  if (typeof value !== "string" || value.trim().length < 8) {
+    throw new Error("That model key is too short to be valid.");
+  }
+  const keys = await readStoredKeys();
+  keys[name] = value.trim();
+  await mkdir(app.getPath("userData"), { recursive: true });
+  const encrypted = safeStorage.encryptString(JSON.stringify(keys)).toString("base64");
+  await writeFile(settingsPath(), encrypted, { encoding: "utf8", mode: 0o600 });
+}
+
+function reserveLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close((error) => error ? reject(error) : resolve(port));
+    });
+  });
+}
+
+function backendCommand() {
+  if (app.isPackaged) {
+    const executable = process.platform === "win32"
+      ? resourcePath("backend", "ohmwork-server.exe")
+      : resourcePath("backend", "ohmwork-server");
+    if (!existsSync(executable)) throw new Error(`Desktop backend is missing: ${executable}`);
+    return { command: executable, args: [] };
+  }
+  return { command: process.env.OHMWORK_PYTHON ?? "python", args: ["-m", "ohmwork.server"] };
+}
+
+async function waitForHealthyBackend(port) {
+  const url = `http://127.0.0.1:${port}/api/health`;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try {
+      const response = await net.fetch(url);
+      if (response.ok) return;
+    } catch {
+      // The backend is expected to take a moment to start its Python imports.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Ohmwork's local backend did not become ready.");
+}
+
+async function startBackend() {
+  backendPort = await reserveLoopbackPort();
+  const password = randomBytes(32).toString("base64url");
+  const { command, args } = backendCommand();
+  const storedKeys = await readStoredKeys();
+  backend = spawn(command, args, {
+    cwd: resourcePath(),
+    windowsHide: true,
+    env: {
+      ...process.env,
+      PORT: String(backendPort),
+      OHMWORK_BIND_HOST: "127.0.0.1",
+      OHMWORK_PASSWORD: password,
+      OHMWORK_SECURE_COOKIES: "0",
+      OHMWORK_STATIC: resourcePath("web", "dist"),
+      OHMWORK_LLM: "pool",
+      ...storedKeys,
+      PYTHONUNBUFFERED: "1"
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  let diagnostics = "";
+  backend.stderr.on("data", (chunk) => { diagnostics += chunk.toString(); });
+  backend.once("exit", (code) => {
+    if (code !== 0 && !app.isQuitting) {
+      dialog.showErrorBox("Ohmwork stopped", diagnostics || `The local backend exited with code ${code}.`);
+    }
+  });
+  await waitForHealthyBackend(backendPort);
+
+  // The password is generated in this main process and never enters the page.
+  const login = await net.fetch(`http://127.0.0.1:${backendPort}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password })
+  });
+  if (!login.ok) throw new Error("Ohmwork's local login could not be established.");
+  const cookies = await session.defaultSession.cookies.get({
+    url: `http://127.0.0.1:${backendPort}`,
+    name: "ohmwork_session"
+  });
+  if (cookies.length !== 1) throw new Error("Ohmwork returned no usable local session cookie.");
+}
+
+function isBackendUrl(url) {
+  const parsed = new URL(url);
+  return parsed.protocol === "http:" && parsed.hostname === "127.0.0.1"
+    && parsed.port === String(backendPort);
+}
+
+function createWindow() {
+  const window = new BrowserWindow({
+    width: 1200, height: 840, minWidth: 900, minHeight: 650, show: false,
+    webPreferences: {
+      preload: path.join(here, "preload.cjs"),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false
+    }
+  });
+  window.setMenuBarVisibility(false);
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event, url) => {
+    if (!isBackendUrl(url)) event.preventDefault();
+  });
+  window.once("ready-to-show", () => window.show());
+  window.loadURL(`http://127.0.0.1:${backendPort}/`);
+}
+
+app.whenReady().then(async () => {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (!isBackendUrl(details.url)) return callback({ responseHeaders: details.responseHeaders });
+    callback({ responseHeaders: {
+      ...details.responseHeaders,
+      "Content-Security-Policy": [
+        "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
+        + "style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+      ]
+    }});
+  });
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  ipcMain.handle("desktop:provider-state", async () => ({
+    encryptionAvailable: safeStorage.isEncryptionAvailable(),
+    configured: Object.keys(await readStoredKeys())
+  }));
+  ipcMain.handle("desktop:save-provider-key", async (_event, name, value) => {
+    await writeStoredKey(name, value);
+    // The backend reads its keys at process start. A relaunch avoids a second
+    // code path that mutates a running server, and guarantees the renderer
+    // never sees the key after the one IPC call that stores it.
+    setTimeout(() => { app.relaunch(); app.exit(0); }, 150);
+    return { restarting: true };
+  });
+  await startBackend();
+  createWindow();
+}).catch((error) => { dialog.showErrorBox("Ohmwork could not start", String(error)); app.quit(); });
+
+app.on("window-all-closed", () => app.quit());
+app.on("before-quit", () => { if (backend && !backend.killed) backend.kill(); });

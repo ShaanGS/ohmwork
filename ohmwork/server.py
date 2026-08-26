@@ -447,7 +447,11 @@ def main(argv=None) -> int:
     import uvicorn
 
     port = int(os.environ.get("PORT", "7860"))
-    uvicorn.run(build(), host="0.0.0.0", port=port)
+    # Hosted deployments need to be reachable from their reverse proxy, so
+    # their default remains 0.0.0.0. The desktop shell sets this to 127.0.0.1:
+    # its backend is a private helper process, not a LAN service.
+    host = os.environ.get("OHMWORK_BIND_HOST", "0.0.0.0")
+    uvicorn.run(build(), host=host, port=port)
     return 0
 
 

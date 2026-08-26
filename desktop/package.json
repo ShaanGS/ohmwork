@@ -1,0 +1,31 @@
+{
+  "name": "ohmwork-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local desktop shell for Ohmwork",
+  "author": "ShaanGS",
+  "license": "MIT",
+  "main": "main.mjs",
+  "type": "module",
+  "scripts": {
+    "dev": "electron .",
+    "package:win": "electron-builder --win nsis",
+    "package:mac": "electron-builder --mac dmg",
+    "package:dir": "electron-builder --dir"
+  },
+  "build": {
+    "appId": "edu.srm.ohmwork",
+    "productName": "Ohmwork",
+    "files": ["main.mjs", "preload.cjs"],
+    "extraResources": [
+      {"from": "../web/dist", "to": "web/dist"},
+      {"from": "../desktop-backend", "to": "backend", "filter": ["**/*"]}
+    ],
+    "win": {"target": "nsis"},
+    "mac": {"target": "dmg", "category": "public.app-category.education"}
+  },
+  "devDependencies": {
+    "electron": "^36.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}

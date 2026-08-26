@@ -1,0 +1,63 @@
+name: desktop
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            command: npm run package:win
+            artifact: Ohmwork-Windows
+            path: desktop/dist/*.exe
+          - os: macos-latest
+            command: npm run package:mac
+            artifact: Ohmwork-macOS
+            path: desktop/dist/*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            desktop/package-lock.json
+
+      - name: Build the verified Python backend for this operating system
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[web,llm]" -r desktop/requirements-build.txt
+          ./desktop/build-backend.ps1
+
+      - name: Build the React app
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build the desktop installer
+        working-directory: desktop
+        env:
+          # CI artefacts are deliberately UNSIGNED. Signing happens only when
+          # Apple/Windows credentials are intentionally supplied for a release.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          npm ci
+          ${{ matrix.command }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error

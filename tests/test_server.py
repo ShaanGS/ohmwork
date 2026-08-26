@@ -404,3 +404,26 @@ def test_the_built_page_is_found_by_an_INSTALLED_package_too(tmp_path,
     assert 'id="root"' in page.text
     # ...and an unknown /api route is still a 404, never the page.
     assert client.get("/api/nope").status_code == 404
+
+
+def test_desktop_can_bind_the_backend_to_loopback(monkeypatch):
+    """The desktop backend is a private helper, never a LAN service.
+
+    A public hosted service needs 0.0.0.0 for its reverse proxy, which remains
+    the default. The desktop shell explicitly selects loopback and this test
+    pins that distinction at the one place it can accidentally disappear.
+    """
+    import sys
+    import types
+
+    called = {}
+    monkeypatch.setenv("OHMWORK_BIND_HOST", "127.0.0.1")
+    monkeypatch.setenv("PORT", "47123")
+    monkeypatch.setattr(server, "build", lambda: object())
+    monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(
+        run=lambda app, *, host, port: called.update(app=app, host=host, port=port)
+    ))
+
+    assert server.main() == 0
+    assert called["host"] == "127.0.0.1"
+    assert called["port"] == 47123

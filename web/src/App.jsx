@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  ArrowUp, Check, CircleAlert, Download, Loader2, TriangleAlert, Waves,
+  ArrowUp, Check, CircleAlert, Download, KeyRound, Loader2, TriangleAlert, Waves,
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -128,6 +128,7 @@ function Login({ onIn }) {
 }
 
 function Solver({ onExpired }) {
+  const desktop = window.ohmworkDesktop
   const [question, setQuestion] = useState('')
   const [asked, setAsked] = useState(null)
   const [running, setRunning] = useState(false)
@@ -137,6 +138,7 @@ function Solver({ onExpired }) {
   const [refused, setRefused] = useState(null)
   const [unavailable, setUnavailable] = useState(null)
   const [error, setError] = useState(null)
+  const [showSettings, setShowSettings] = useState(false)
   const bottom = useRef(null)
 
   useEffect(() => {
@@ -194,13 +196,28 @@ function Solver({ onExpired }) {
     <div className="flex h-full flex-col bg-background">
       <header className="flex items-center justify-between border-b px-4 py-3">
         <Wordmark className="text-sm" />
-        <Badge variant="outline" className="text-muted-foreground">
-          digital · logisim evolution
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-muted-foreground">
+            digital · logisim evolution
+          </Badge>
+          {desktop && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              title="Model key settings"
+              aria-label="Model key settings"
+              onClick={() => setShowSettings((open) => !open)}
+            >
+              <KeyRound />
+            </Button>
+          )}
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
+          {showSettings && desktop && <DesktopSettings desktop={desktop} onDone={() => setShowSettings(false)} />}
           {!asked && <Intro onPick={setQuestion} />}
 
           {asked && <Asked text={asked} />}
@@ -226,6 +243,83 @@ function Solver({ onExpired }) {
         running={running}
       />
     </div>
+  )
+}
+
+function DesktopSettings({ desktop, onDone }) {
+  const [provider, setProvider] = useState('GROQ_API_KEY')
+  const [key, setKey] = useState('')
+  const [state, setState] = useState(null)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    desktop.providerState().then(setState).catch(() => {
+      setError('secure credential storage is unavailable on this computer')
+    })
+  }, [desktop])
+
+  async function save(event) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      await desktop.saveProviderKey(provider, key)
+      // Electron restarts immediately after accepting it. This text is useful
+      // when a platform delays that restart by a moment.
+      setKey('')
+    } catch (reason) {
+      setSaving(false)
+      setError(reason?.message || 'the key could not be stored')
+    }
+  }
+
+  return (
+    <Card className="border-caution/40 bg-caution/5 animate-in fade-in slide-in-from-bottom-2">
+      <CardContent className="space-y-3">
+        <div>
+          <p className="text-sm font-medium">local model key</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Stored encrypted by your operating system. It is sent to the local
+            solver process, never to this page, and never uploaded by Ohmwork.
+          </p>
+        </div>
+        <form onSubmit={save} className="flex flex-col gap-2 sm:flex-row">
+          <select
+            aria-label="Model provider"
+            className="h-9 rounded-md border bg-background px-2 text-sm"
+            value={provider}
+            onChange={(event) => setProvider(event.target.value)}
+            disabled={saving || state?.encryptionAvailable === false}
+          >
+            <option value="GROQ_API_KEY">Groq</option>
+            <option value="GEMINI_API_KEY">Google Gemini</option>
+            <option value="MISTRAL_API_KEY">Mistral</option>
+            <option value="OPENROUTER_API_KEY">OpenRouter</option>
+            <option value="CEREBRAS_API_KEY">Cerebras</option>
+          </select>
+          <Input
+            type="password"
+            autoComplete="off"
+            placeholder="API key"
+            value={key}
+            onChange={(event) => setKey(event.target.value)}
+            disabled={saving || state?.encryptionAvailable === false}
+          />
+          <Button type="submit" disabled={saving || key.trim().length < 8 || state?.encryptionAvailable === false}>
+            {saving && <Loader2 className="animate-spin" />}
+            {saving ? 'restarting' : 'save'}
+          </Button>
+        </form>
+        {state && (
+          <p className="text-xs text-muted-foreground">
+            configured locally: {state.configured.length ? state.configured.join(', ') : 'none'}
+          </p>
+        )}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        <Button type="button" variant="ghost" size="xs" onClick={onDone}>close</Button>
+      </CardContent>
+    </Card>
   )
 }
 

@@ -44,6 +44,17 @@ site/
 web/node_modules/
 web/dist/
 
+# Desktop release artefacts. These are platform-native executable bundles and
+# installers, not source: CI creates them on Windows/macOS and attaches them
+# to a release. Keeping them out avoids a Windows binary looking like a Mac
+# build merely because it sits beside one.
+desktop/node_modules/
+desktop/dist/
+desktop-backend/*
+!desktop-backend/.gitkeep
+.desktop-pyinstaller-build/
+.desktop-pyinstaller-spec/
+
 # Scratch output from local --solve runs.
 .scratch_*/
 .scratch_*.log
