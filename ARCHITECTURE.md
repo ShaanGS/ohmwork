@@ -50,6 +50,24 @@ results
 library/<slug>/                       manifest.json + question.json + files
 ```
 
+Above that sits the **design loop**, which is how a question typed in plain
+English reaches the gate at all:
+
+```
+question text
+  |
+  |  domain.py    refuse what this loop cannot answer, before a token is spent
+  |  spec.py      the model writes one boolean expression per output, from the
+  |               question's WORDS. No gates. Its signal names are authoritative.
+  |  design.py    the plan is DERIVED in Python; the model writes only
+  |               components and nets; the gate's rejection is fed back verbatim
+  |  partcheck.py for a question naming a measured part: evaluate a BARE one
+  |               first, and require the design to reproduce it through the
+  |               wiring. The chip is its own reference; no datasheet is recalled
+  v
+question.json  ->  the gate above
+```
+
 Supporting modules: `symbols.py` and `logisim_symbols.py` hold the measured pin
 tables (and refuse anything unmeasured); `parts.py` holds the device policy;
 `plt.py` writes LTspice plot files and is **frozen**; `llm.py` is the provider
@@ -310,6 +328,7 @@ defence that exists because of it.
 | 18 | A hand-rolled HTTP client for the free tiers, correct against a fake transport in every field | the first live call came back `HTTP 403: error code: 1010` — a Cloudflare bot challenge, triggered by urllib's default User-Agent. It looks like neither an auth failure nor a model problem, and reads as a dead key | the client sends a named User-Agent, and the test asserts it with the measurement in the comment: a wire-format detail no fake can discover |
 | 19 | A model answering `200 OK` with an empty string | a reasoning model asked for 20 tokens spends all of them thinking and returns nothing, successfully. Passed on, it surfaces three layers up as "the model produced invalid JSON" — blaming the model for a budget this side chose | an empty completion is an error at the provider, naming `max_tokens` as the likely cause |
 | 20 | An **analog** question typed into the digital endpoint, answered **VERIFIED** in green with a download button | the model wrote `RECT_OUT = AC`, `FILTER_OUT = AC`, `REG_OUT = AC` -- 12 V RMS waveforms as boolean signals -- the loop designed wires for it, and Logisim honestly confirmed that the wires compute the wires. Every claim in the chain was true; the result was worthless. "Verified" only ever meant *the circuit matches the spec*, and nothing downstream of the spec can notice the spec was a category error | `ohmwork/domain.py`: a deterministic screen before any model call (quoting the evidence it found), a refusal channel in the spec prompt, and a structural check that rejects a spec containing no logic at all. A refusal renders as its own thing, never as a failed solve |
+| 21 | A 7447 question checked against the model's SPEC, exactly as a gate-level question is | for a question that names a chip, the spec IS the model's memory of a datasheet. It said BCD 0000 lights nothing; a real 7447 shows a nought. The circuit was right and the reference was wrong, so a correct answer failed — and had the recollection been wrong the other way, a wrong answer would have passed | `ohmwork/partcheck.py`: a bare part is evaluated first, in the same evaluator, and the design must reproduce THAT through its own wiring. `Solution.basis` says which reference was used, and the CLI, the UI and the manifest all render it — a part-verified answer and a spec-verified one are different claims |
 
 ### The two rules most of these converge on
 
@@ -368,6 +387,29 @@ sides identically and they go on agreeing. The published truth table is
 additionally checked against a spec oracle written from the question's own
 wording: four lines, no gates, no netlist. That oracle is the only check in the
 set that could catch the gate network implementing the wrong *function*.
+
+**A verified answer says WHAT it was checked against, because there are two
+answers.** A gate-level question is checked against a specification the model
+read from the question's words. A question naming a part is checked against the
+PART: a bare one is evaluated first, and the design must reproduce that through
+its own wiring (`ohmwork/partcheck.py`). The second exists because the first is
+backwards for an IC — the spec there is the model's memory of a datasheet, and
+verifying a chip against a recollection can fail a right answer and pass a wrong
+one. Both bases have the SAME hole, and it is stated in the output rather than
+implied: neither can prove that what it checked against is the right reading of
+the question. The spec basis answers that with printed algebra; the part basis
+with a printed wiring map. One slice of it is closed mechanically — a signal
+whose own name names a pin of the part must be on that pin, which is a
+constraint from outside the wiring and so is not self-confirming.
+
+**The part basis predicts with our own gate logic, deliberately.** Steps 3 and 4
+both read the same nets, so they agree about a swapped signal; what they do not
+share is an implementation. `partcheck.GATE_LOGIC` is written in this repo and
+imported from nowhere, Logisim's is Logisim's, and a disagreement is evidence
+about the emitter, the router, the pin table or the gates. It is not a
+replacement for the deferred `.circ` parser round trip — it is stronger, for the
+same reason `--tty table` is: the other side of the comparison is a tool we did
+not write.
 
 **The `.plt` file has no machine check of any kind.** Batch mode does not read
 plot files, so nothing can verify what LTspice renders from one. Its only check

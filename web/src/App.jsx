@@ -300,8 +300,14 @@ function Reading({ reading }) {
         </pre>
         <Separator className="bg-caution/20" />
         <p className="text-xs leading-relaxed text-caution/90">
-          Read this. Everything below is checked against it, not against your
-          question — a misreading here passes every check that follows.
+          {reading.basis === 'part'
+            ? `Read this. Your question names a part, so the answer is checked
+               against that chip's own measured behaviour and the wiring map
+               printed with it — not against the words above, and not against
+               your question.`
+            : `Read this. Everything below is checked against it, not against
+               your question — a misreading here passes every check that
+               follows.`}
         </p>
       </CardContent>
     </Card>
@@ -368,6 +374,29 @@ function Verified({ verified }) {
           <Fact label="agreement">{verified.summary.split('\n')[0]}</Fact>
           <Fact label="designed by">{verified.designed_by}</Fact>
         </dl>
+
+        {/* WHAT it was checked against. "Verified" alone is the same badge
+            over two different claims: algebra read from the question, or a
+            real part's own measured behaviour. A reader who cannot tell them
+            apart has been shown the stronger one. */}
+        {verified.basis && (
+          <div className="space-y-2 rounded-lg border border-verified/20 p-3">
+            <p className="text-xs font-medium uppercase tracking-wider
+                          text-muted-foreground">
+              checked against
+            </p>
+            <p className="text-xs leading-relaxed">{verified.basis.headline}</p>
+            {verified.basis.kind === 'part' && (
+              <pre className="overflow-x-auto font-mono text-[13px]
+                              leading-relaxed">
+{verified.basis.reading}
+              </pre>
+            )}
+            <p className="text-xs leading-relaxed text-caution/90">
+              Not established by any check here: {verified.basis.limit}
+            </p>
+          </div>
+        )}
 
         <div className="overflow-x-auto rounded-lg border">
           <Table className="font-mono text-[13px]">

@@ -341,7 +341,8 @@ def _backfill(solution, seen: set, progress) -> None:
     """
     if "reading" not in seen:
         spec = solution.spec
-        progress("reading", {"spec": spec.render(),
+        progress("reading", {"spec": solution.basis.reading,
+                             "basis": solution.basis.kind,
                              "inputs": list(spec.inputs),
                              "outputs": list(spec.outputs),
                              "notes": list(getattr(spec, "notes", ()) or ())})
@@ -358,6 +359,13 @@ def _verified_payload(solution, downloads: dict) -> dict:
     does not say who checked it is a result nobody can re-check, and the
     offline fallback evaluator computes the answer AND anything it would be
     checked against -- a reader has to be able to tell those apart.
+
+    `basis` is here for the same reason one layer up: WHO checked it and WHAT
+    it was checked against are separate questions. A gate-level answer is
+    checked against a specification read from the question; an IC answer is
+    checked against the part's own measured behaviour. Rendering both as a
+    green "verified" and nothing else would make the stronger claim by
+    default.
     """
     token = secrets.token_urlsafe(16)
     downloads[token] = Path(solution.circ_path)
@@ -369,6 +377,7 @@ def _verified_payload(solution, downloads: dict) -> dict:
         "verification": "internal" if "internal" in str(backend).lower()
                         else "external",
         "summary": solution.comparison.summary,
+        "basis": solution.basis.to_dict(),
         "attempts": solution.attempts,
         "designed_by": f"{solution.provider}/{solution.model}",
         "columns": list(table.inputs) + list(table.outputs),

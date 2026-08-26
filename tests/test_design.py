@@ -26,9 +26,18 @@ WHAT THE LOOP GUARANTEES, precisely. That the file handed over computes the
 function in the spec. NOT that the spec is the right reading of the question.
 If the model decides I3 is lowest priority when the question meant highest,
 spec and circuit agree and Logisim confirms them both. That failure is
-invisible here by construction, which is why `Solution.spec.render()` is part
-of the OUTPUT rather than an internal detail -- a human reading four lines of
-algebra can catch what no amount of simulation can.
+invisible here by construction, which is why the reading is part of the
+OUTPUT rather than an internal detail -- a human reading four lines of algebra
+can catch what no amount of simulation can.
+
+STEP 5 HAS TWO BASES, and which one ran is a fact about the answer. A
+gate-level question is checked against the SPEC, above. A question that names
+a part this build has measured is checked against THE PART: a bare one is
+evaluated first, and the design must reproduce that measured behaviour
+through its own wiring. The spec cannot serve there, because for a named chip
+it is the model's memory of a datasheet -- see the section at the foot of
+this file, and ohmwork/partcheck.py for the incident. `Solution.basis` says
+which ran, what it proves, and what it does not.
 
 No test in this file touches the network. Every provider is a fake, as with
 captions.py: the loop's logic is what is under test, not a model's mood.
@@ -493,7 +502,7 @@ def test_a_first_time_success_reports_no_failures(tmp_path):
     assert solution.failed_attempts == ()
 
 
-def test_a_question_naming_a_supported_part_is_not_offered_a_refusal_channel():
+def test_a_question_naming_a_supported_part_is_not_offered_a_refusal_channel(tmp_path):
     """Measured against a real model: asked to spec the 7447 question, it
     used the refusal channel, reasoning that an IC with active-low outputs is
     "not representable as pure combinational boolean logic". That is simply
@@ -504,12 +513,15 @@ def test_a_question_naming_a_supported_part_is_not_offered_a_refusal_channel():
     So when the question names a part this tool has measured, the domain
     question is already settled and the channel is not offered at all.
     """
-    from ohmwork.design import NO_REFUSAL_RULE, REFUSAL_RULE
-
     provider = FakeProvider([SPEC_JSON, design_reply()])
-    solve("Design a BCD to seven-segment circuit using the 7447 decoder IC.",
-          provider=provider, backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
-          workdir=None if False else __import__("tempfile").mkdtemp())
+    with pytest.raises(DesignError):
+        # The design offered is an encoder, so it is rightly rejected for
+        # containing no 7447. What is under test is the PROMPT, which was
+        # written before any of that.
+        solve("Design a BCD to seven-segment circuit using the 7447 decoder IC.",
+              provider=provider,
+              backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+              workdir=tmp_path, attempts=1)
 
     spec_prompt = provider.prompts[0]
     assert "Do not refuse it" in spec_prompt
@@ -526,3 +538,219 @@ def test_a_question_naming_nothing_still_gets_the_refusal_channel():
     assert "unsupported" in spec_prompt
     # ...and it names what a refusal is FOR, so it does not fire on an IC.
     assert "not two-valued" in spec_prompt
+
+
+# ----------------------------------------- a question that names a part
+#
+# THE INCIDENT. Q4 -- "design a BCD-to-seven-segment display circuit using
+# the 7447-decoder IC" -- reached the comparison and failed there, and the
+# failure was not a bug. The reference was the model's SPEC, which for a
+# named chip is its memory of a datasheet. Its memory said BCD 0000 lights
+# nothing; a real 7447 shows a nought. The chip is right.
+#
+# So a part-named question is checked against the PART: a bare one is
+# evaluated, and the design must reproduce that through its own wiring. The
+# tests below all turn on that difference, and the first one is the
+# regression: a spec that is WRONG must not stop a correct circuit verifying.
+
+PART_QUESTION = ("Design a BCD to seven-segment display circuit using the "
+                 "7447 decoder IC and a seven-segment display.")
+
+#: Deliberately a MISREMEMBERED decoder: these expressions are not what any
+#: 7447 does. If the loop still verifies the circuit, the spec is provably
+#: not what it was checked against.
+WRONG_RECOLLECTION = json.dumps({
+    "inputs": ["D", "C", "B", "A", "EN"],
+    "outputs": ["Qa", "Qb", "Qc", "Qd", "Qe", "Qf", "Qg"],
+    "expressions": {
+        "Qa": "EN & (D | C)", "Qb": "EN & (C ^ B)", "Qc": "EN & (B | A)",
+        "Qd": "EN & (D ^ A)", "Qe": "EN & (C & A)", "Qf": "EN & (D | B)",
+        "Qg": "EN & (C | ~A)",
+    },
+    "notes": ["EN ties the lamp-test, blanking and ripple-blanking pins"],
+})
+
+
+def q4_design():
+    from pathlib import Path
+    return json.loads((Path(__file__).parent.parent / "examples" / "q4.json")
+                      .read_text(encoding="utf-8"))["circuit"]
+
+
+def stand_in_decoder(a, b, c, d, lt, bi, rbi):
+    """A chip in the SHAPE a 7447 has: active low, blankable, lamp-testable.
+
+    NOT the real 7447. What these tests exercise is the loop's plumbing, and
+    a hand-copied datasheet here would be a second, unmeasured copy of the
+    one thing this project refuses to keep in two places. The real chip's
+    behaviour is measured in tests/test_logisim_ttl.py, against Evolution.
+    """
+    if bi == 0:
+        return (1,) * 7
+    if lt == 0:
+        return (0,) * 7
+    value = d * 8 + c * 4 + b * 2 + a
+    return tuple(0 if (value >> index) % 2 else 1 for index in range(7))
+
+
+class FakeChipBackend:
+    """Stands in for Logisim on BOTH files: the probe and the design.
+
+    It models the intended circuit by hand -- each input straight to the pin
+    of the same name, the three control pins tied to EN, segments straight
+    out. That model is written here, independently of
+    `partcheck.derive_wiring`, so agreement between the two means something.
+    """
+
+    name = "fake-logisim"
+    verification = "external"
+
+    def __init__(self, corrupt_design=False):
+        self.corrupt_design = corrupt_design
+        self.files = []
+
+    def truth_table(self, circ_path, inputs, outputs, timeout=120):
+        from itertools import product
+
+        from ohmwork.logisim_backend import TruthTable
+        self.files.append(str(circ_path))
+        is_design = "EN" in inputs
+        width = len(inputs)
+        rows = []
+        for combination in product((0, 1), repeat=width):
+            values = dict(zip(inputs, combination))
+            if is_design:
+                control = (values["EN"],) * 3
+            else:
+                control = (values["LT"], values["BI"], values["RBI"])
+            segments = dict(zip(
+                ("QA", "QB", "QC", "QD", "QE", "QF", "QG"),
+                stand_in_decoder(values["A"], values["B"], values["C"],
+                                 values["D"], *control)))
+            rows.append(tuple(combination)
+                        + tuple(segments[name.upper()] for name in outputs))
+        if is_design and self.corrupt_design:
+            # One wrong bit in one row. The check has to be able to fail.
+            first = list(rows[0])
+            first[width] = 1 - first[width]
+            rows[0] = tuple(first)
+        return TruthTable(inputs=tuple(inputs), outputs=tuple(outputs),
+                          rows=tuple(rows), backend=self.name,
+                          verification=self.verification)
+
+
+def test_a_part_question_is_checked_against_the_PART_not_a_recollection(tmp_path):
+    """The Q4 regression, in one test.
+
+    The spec here is wrong about the chip on purpose. Under the old loop that
+    alone sank the answer. Now the spec supplies only names and the choices
+    the question left open, and the reference is the chip itself.
+    """
+    from ohmwork.spec import compare_tables
+
+    provider = FakeProvider([WRONG_RECOLLECTION, json.dumps(q4_design())])
+    solution = solve(PART_QUESTION, provider=provider,
+                     backend=FakeChipBackend(), workdir=tmp_path)
+
+    assert solution.comparison.agrees
+    assert solution.attempts == 1
+    assert solution.basis.kind == "part"
+    assert "7447" in solution.basis.headline
+
+    # ...and prove the spec really was NOT the reference: it disagrees.
+    assert not compare_tables(evaluate_spec(solution.spec),
+                              solution.table).agrees
+
+
+def test_the_reference_is_measured_from_a_bare_part_in_the_same_evaluator(tmp_path):
+    """Two files reach the evaluator: a probe of the chip alone, and the
+    design. If the probe stopped being run the reference would have to come
+    from somewhere else, and the only other place is a recollection."""
+    backend = FakeChipBackend()
+    solve(PART_QUESTION,
+          provider=FakeProvider([WRONG_RECOLLECTION, json.dumps(q4_design())]),
+          backend=backend, workdir=tmp_path)
+
+    assert len(backend.files) == 2
+    assert any("probe" in name for name in backend.files)
+
+
+def test_the_part_basis_still_fails_when_the_file_does_not_match(tmp_path):
+    """A check that cannot fail is worth nothing. One flipped bit in one row
+    of the emitted file's table, and the design is rejected."""
+    provider = FakeProvider([WRONG_RECOLLECTION] + [json.dumps(q4_design())] * 2)
+
+    with pytest.raises(DesignError) as excinfo:
+        solve(PART_QUESTION, provider=provider,
+              backend=FakeChipBackend(corrupt_design=True), workdir=tmp_path)
+    # The rejection says what the circuit was measured against, in words that
+    # do not read as "your algebra was wrong".
+    assert "7447" in str(excinfo.value)
+
+
+def test_a_swapped_signal_is_refused_by_NAME_before_it_reaches_the_file(tmp_path):
+    """The one misreading this basis catches by itself.
+
+    Prediction and evaluation both read the same nets, so a swap agrees with
+    itself. The names do not: the question's signal A on the part's D pin is
+    refused, and the message says why.
+    """
+    swapped = q4_design()
+    swapped["nets"]["n_d"] = ["D.pin", "U1.A"]
+    swapped["nets"]["n_a"] = ["A.pin", "U1.D"]
+    provider = FakeProvider([WRONG_RECOLLECTION] + [json.dumps(swapped)] * 2)
+
+    with pytest.raises(DesignError) as excinfo:
+        solve(PART_QUESTION, provider=provider, backend=FakeChipBackend(),
+              workdir=tmp_path)
+    assert "must be on that pin" in str(excinfo.value)
+
+
+def test_the_reading_shown_before_the_answer_hides_no_recollection(tmp_path):
+    """What a person is asked to check, at the moment they are asked.
+
+    For a gate-level question that is the algebra. For a part-named question
+    it must NOT be: printing the model's expressions beside a verified answer
+    presents a recollection as the thing that was checked.
+    """
+    seen = []
+    solve(PART_QUESTION,
+          provider=FakeProvider([WRONG_RECOLLECTION, json.dumps(q4_design())]),
+          backend=FakeChipBackend(), workdir=tmp_path,
+          progress=lambda name, data: seen.append((name, data)))
+
+    reading = next(data for name, data in seen if name == "reading")["spec"]
+    assert "Qa = EN & (D | C)" not in reading
+    assert "7447" in reading
+
+
+def test_a_gate_level_question_still_uses_the_specification(tmp_path):
+    """The two bases must not collapse into one. A question naming no part
+    has no chip to be its own reference, and the spec is the whole story."""
+    solution = solve(QUESTION,
+                     provider=FakeProvider([SPEC_JSON, design_reply()]),
+                     backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                     workdir=tmp_path)
+    assert solution.basis.kind == "spec"
+    assert solution.basis.reading == solution.spec.render()
+
+
+def test_every_basis_states_what_it_cannot_prove(tmp_path):
+    """A claim with no stated edge reads as a claim with none, and these two
+    claims have very different edges."""
+    part = solve(PART_QUESTION,
+                 provider=FakeProvider([WRONG_RECOLLECTION,
+                                        json.dumps(q4_design())]),
+                 backend=FakeChipBackend(), workdir=tmp_path)
+    gates = solve(QUESTION, provider=FakeProvider([SPEC_JSON, design_reply()]),
+                  backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                  workdir=tmp_path / "gates")
+
+    for solution in (part, gates):
+        assert "reading of the question" in solution.basis.limit
+    assert part.basis.limit != gates.basis.limit
+    # The published question carries the basis too: a manifest that did not
+    # say which claim it was making would make the stronger one by default.
+    notes = {note["item"]: note for note in part.question_data["design_notes"]}
+    assert "verification basis" in notes
+    assert "wiring, as checked" in notes

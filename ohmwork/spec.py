@@ -366,7 +366,8 @@ def _index_by_inputs(columns, rows, inputs, outputs):
 
 
 def compare_tables(expected: SpecTable, actual,
-                   max_differences: int = DEFAULT_MAX_DIFFERENCES) -> Comparison:
+                   max_differences: int = DEFAULT_MAX_DIFFERENCES,
+                   subject: str = "the specification") -> Comparison:
     """Compare the spec's table against what an evaluator produced.
 
     `actual` is anything with `.inputs`, `.outputs` and `.rows` — in practice
@@ -375,6 +376,11 @@ def compare_tables(expected: SpecTable, actual,
     The summary is written to be fed back to a model, so it names signals and
     prints whole rows. A bare "mismatch" teaches nothing and wastes the retry
     it triggers.
+
+    `subject` names what the table was compared AGAINST. The gate-level path
+    compares against a specification; an IC question compares against the
+    part's own measured behaviour, and a summary that called both "the spec"
+    would make two different claims read identically.
     """
     missing_outputs = tuple(name for name in expected.outputs
                             if name not in actual.outputs)
@@ -418,7 +424,7 @@ def compare_tables(expected: SpecTable, actual,
 
     if not differences and not missing_rows:
         return Comparison(agrees=True, summary=(
-            f"the circuit matches the spec on all {len(expected.rows)} input "
+            f"the circuit matches {subject} on all {len(expected.rows)} input "
             f"combinations, for outputs {list(expected.outputs)}"))
 
     lines = []
@@ -429,7 +435,7 @@ def compare_tables(expected: SpecTable, actual,
     if differences:
         lines.append(
             f"{len(differences)} of {len(expected.rows)} rows disagree with "
-            f"what the question requires:")
+            f"{subject}:")
         for difference in differences[:max_differences]:
             given = ", ".join(f"{name}={value}" for name, value
                               in zip(expected.inputs, difference.inputs))

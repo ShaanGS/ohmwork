@@ -54,6 +54,12 @@ class FakeSolution:
         })()
         self.comparison = type("Cmp", (), {
             "agrees": True, "summary": "32 of 32 rows agree"})()
+        # The REAL basis object, not another stub: what a verified answer is
+        # allowed to claim is decided in partcheck.py, and a fake that
+        # invented its own wording here would let the two drift apart.
+        from ohmwork.partcheck import spec_basis
+        self.spec.expressions = {"Y0": "EN & I0", "Y1": "EN & I1"}
+        self.basis = spec_basis(self.spec)
         self._circ_text = circ_text
 
     def write_to(self, workdir):
@@ -203,6 +209,24 @@ def test_the_verified_event_names_the_evaluator_that_confirmed_it():
     assert verified["evaluator"] == "logisim-evolution 4.1.0"
     assert verified["verification"] == "external"
     assert verified["rows"] and verified["columns"]
+
+
+def test_the_verified_event_also_says_WHAT_it_was_checked_against():
+    """Who checked it and what it was checked against are two questions.
+
+    A gate-level answer is checked against a specification read from the
+    question's words; a question naming a 7447 is checked against the chip's
+    own measured behaviour. Rendering both as a green "verified" and nothing
+    else makes the stronger claim by default, so the basis travels with the
+    payload -- including the limit it does not establish.
+    """
+    client = make_client()
+    login(client)
+    verified = dict(events(solve(client)))["verified"]
+
+    assert verified["basis"]["kind"] == "spec"
+    assert verified["basis"]["headline"]
+    assert "reading of the question" in verified["basis"]["limit"]
 
 
 def test_the_model_that_designed_it_is_reported_as_the_MEMBER_not_the_pool():

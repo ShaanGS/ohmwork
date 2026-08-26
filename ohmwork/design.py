@@ -41,6 +41,9 @@ from ohmwork.domain import (ANALOG_ADVICE, DomainError, check_digital,
 from ohmwork.llm import LLMError, PoolExhausted
 from ohmwork.logisim_backend import DigitalEvaluationError
 from ohmwork.logisim_symbols import SAFE_LABEL
+from ohmwork.partcheck import (WiringError, derive_wiring, name_conflicts,
+                               part_basis, predict_table, probe_table,
+                               probeable, spec_basis)
 from ohmwork.spec import Spec, SpecError, compare_tables, evaluate_spec
 
 #: Bounded for the same reason extract.py bounds its retries: a model that
@@ -377,7 +380,7 @@ def build_plan(spec: Spec) -> dict:
 
 
 def build_question_data(question: str, spec: Spec, circuit: dict,
-                        provider_name: str, model: str) -> dict:
+                        provider_name: str, model: str, basis) -> dict:
     """Assemble the question JSON the existing gate and manifest already take.
 
     Deliberately the SAME format the hand-written questions use. A second
@@ -400,14 +403,26 @@ def build_question_data(question: str, spec: Spec, circuit: dict,
         "circuit": circuit,
         "analysis": build_plan(spec),
         "design_notes": [
-            {"item": "specification",
-             "choice": "; ".join(f"{name} = {spec.expressions[name]}"
-                                 for name in spec.outputs),
+            # WHAT the circuit was checked against, published rather than
+            # implied. A gate-level answer is checked against algebra read
+            # from the question; an IC answer is checked against the chip's
+            # own measured behaviour. Those are different claims, and a
+            # manifest that rendered them identically would tell a reader the
+            # stronger one.
+            {"item": "verification basis",
+             "choice": basis.headline,
              "rationale": (
-                 "read from the question's wording before any circuit was "
-                 "designed, and checked against the emitted file by Logisim. "
-                 "It is what the circuit was verified AGAINST, so if it "
-                 "misreads the question every check below still passes."),
+                 "the circuit was checked against this and nothing else. "
+                 f"What that does NOT establish: {basis.limit}"),
+             "rationale_origin": "generated"},
+            {"item": ("specification" if basis.kind == "spec"
+                      else "wiring, as checked"),
+             "choice": basis.summary,
+             "rationale": (
+                 "derived before the answer was accepted, and the thing the "
+                 "emitted file was required to reproduce. It is printed in "
+                 "full in the output because nothing downstream of it can "
+                 "tell that it misreads the question."),
              "rationale_origin": "generated"},
         ] + [
             {"item": "choice left open by the question",
@@ -437,6 +452,11 @@ class Solution:
     circ_path: Path
     table: object                       # logisim_backend.TruthTable
     comparison: object                  # spec.Comparison
+    #: WHAT the circuit was checked against -- a specification read from the
+    #: question's words, or the named part's own measured behaviour. Two
+    #: different claims, and an answer that does not say which it is makes
+    #: the stronger one by default. See ohmwork/partcheck.py.
+    basis: object                       # partcheck.Basis
     attempts: int
     provider: str
     model: str
@@ -450,16 +470,45 @@ class Solution:
 
 
 def _attempt(circuit, question, spec, provider_name, model, backend, workdir,
-             index):
-    """One design attempt: gate, emit, evaluate, compare.
+             index, part=None):
+    """One design attempt: read the basis, gate, emit, evaluate, compare.
 
-    Returns (question_data, circ_path, table, comparison). Raises DesignError
-    with a message written to be fed back to the model.
+    `part` is None for a gate-level question, or (type_name, probe_table) for
+    one that names a component this build has measured. The two differ only
+    in what the circuit is checked AGAINST -- everything from the gate
+    onwards is identical, deliberately, so an IC answer travels through the
+    same emitter, the same evaluator and the same comparison as any other.
+
+    Returns (question_data, circ_path, table, comparison, basis). Raises
+    DesignError with a message written to be fed back to the model.
     """
     from ohmwork.logisim_emitter import write_circ
     from ohmwork.question import QuestionError, load_question
+    from ohmwork.targets import get_target
 
-    data = build_question_data(question, spec, circuit, provider_name, model)
+    wiring = None
+    if part is None:
+        basis = spec_basis(spec)
+        subject = "the specification"
+    else:
+        part_type, probe = part
+        target = get_target("logisim")
+        try:
+            wiring = derive_wiring(circuit, part_type, target)
+        except WiringError as exc:
+            raise DesignError(str(exc)) from exc
+        # The one misreading this basis can catch on its own, and it is
+        # checked BEFORE the circuit is emitted: a swap that reaches the
+        # evaluator agrees with itself there.
+        conflicts = name_conflicts(wiring, target)
+        if conflicts:
+            raise DesignError("\n".join(conflicts))
+        basis = part_basis(wiring, probe,
+                           getattr(spec, "notes", ()) or ())
+        subject = f"what a real {wiring.part_name} does through this wiring"
+
+    data = build_question_data(question, spec, circuit, provider_name, model,
+                               basis)
     try:
         question_object = load_question(data)
     except QuestionError as exc:
@@ -504,8 +553,45 @@ def _attempt(circuit, question, spec, provider_name, model, backend, workdir,
                     f"fixed level, use a 'high' or 'low' component instead of "
                     f"an input pin.")
         raise DesignError(f"{exc}{hint}") from exc
-    comparison = compare_tables(evaluate_spec(spec), table)
-    return data, circ_path, table, comparison
+
+    if wiring is None:
+        expected = evaluate_spec(spec)
+    else:
+        # The reference is the PART's own table, pushed through the wiring
+        # this design declares -- never a recollection of a datasheet. See
+        # ohmwork/partcheck.py for the incident that settled this.
+        try:
+            expected = predict_table(wiring, part[1], spec.inputs, spec.outputs)
+        except WiringError as exc:
+            raise DesignError(str(exc)) from exc
+    comparison = compare_tables(expected, table, subject=subject)
+    return data, circ_path, table, comparison, basis
+
+
+def _reading(spec, part, target) -> str:
+    """What was understood from the question's WORDS, before any design.
+
+    For a gate-level question that is the whole reference, so it is the spec.
+    For a part-named question it deliberately is NOT: the model's expressions
+    there are its memory of a datasheet, and printing them beside a verified
+    answer would present a recollection as the thing that was checked. What
+    can honestly be shown this early is the signal names, the choices the
+    question left open, and which part the answer will be checked against --
+    the wiring map itself does not exist until a circuit does, and it is
+    printed with the answer.
+    """
+    if part is None:
+        return spec.render()
+    part_name, _ = target.TYPE_MAP[part[0]]
+    lines = [f"inputs:  {', '.join(spec.inputs)}",
+             f"outputs: {', '.join(spec.outputs)}"]
+    lines += [f"  note: {note}" for note in (getattr(spec, "notes", ()) or ())]
+    lines.append(
+        f"  this question names the {part_name}, so the answer is checked "
+        f"against that chip's own behaviour -- measured by evaluating a bare "
+        f"one -- and not against algebra written from memory. The wiring map "
+        f"that was checked is printed with the answer.")
+    return "\n".join(lines)
 
 
 def _ask_until_it_fits(provider, prompt, budget, parse, what):
@@ -563,7 +649,26 @@ def solve(question: str, *, provider=None, backend=None, workdir,
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
 
+    from ohmwork.targets import get_target
+    target = get_target("logisim")
+
     parts = named_parts(question)
+    # A part can be its own reference only if it PRODUCES something. A
+    # seven-segment display is eight input ports, so a question naming only
+    # one is still checked against a specification -- the display is a sink,
+    # and whatever drives it is ordinary logic.
+    references = [name for name in parts if probeable(name, target)]
+    if len(references) > 1:
+        # Refused BEFORE any token is spent. Predicting a circuit with two
+        # chips in it needs a logic engine this build does not have, and a
+        # loop that quietly fell back to checking such a question against a
+        # recollection of both datasheets would be the Q4 incident twice.
+        raise DesignError(
+            f"this question names {len(references)} parts that each produce "
+            f"outputs ({', '.join(references)}). This build verifies a "
+            f"circuit against ONE named part's own behaviour; it has no way "
+            f"to predict the two together.")
+
     refusal = (NO_REFUSAL_RULE.format(parts=" and ".join(parts)) if parts
                else REFUSAL_RULE)
     spec = _ask_until_it_fits(
@@ -575,7 +680,29 @@ def solve(question: str, *, provider=None, backend=None, workdir,
     # never renders a reading that looks like the start of an answer.
     check_spec_has_logic(spec)
 
-    emit("reading", {"spec": spec.render(),
+    # THE REFERENCE, measured once. For a part-named question the model's
+    # expressions are its memory of a datasheet, so they are not what the
+    # answer is checked against; a bare part evaluated in the same tool is.
+    # Run after the spec so a refused question never pays for a probe.
+    part = None
+    if references:
+        part_type = references[0]
+        try:
+            part = (part_type, probe_table(part_type, target, backend,
+                                           workdir / f"probe_{part_type}.circ"))
+        except WiringError as exc:
+            raise DesignError(
+                f"the question names a {part_type}, but a bare one could not "
+                f"be evaluated to serve as the reference: {exc}") from exc
+
+    emit("reading", {"spec": _reading(spec, part, target),
+                     # Which basis is already settled here, before any design
+                     # exists. A renderer needs it to caption the reading
+                     # honestly: for a part question this text is NOT what the
+                     # answer gets checked against, and saying it is would be
+                     # the same species of false reassurance as a clean screen
+                     # over an unrun check.
+                     "basis": "spec" if part is None else "part",
                      "inputs": list(spec.inputs),
                      "outputs": list(spec.outputs),
                      "notes": list(getattr(spec, "notes", ()) or ())})
@@ -613,9 +740,9 @@ def solve(question: str, *, provider=None, backend=None, workdir,
         # prevent lies. The Reply already carries which member answered.
         try:
             circuit = _json_object(reply.text, "design")
-            data, circ_path, table, comparison = _attempt(
+            data, circ_path, table, comparison, basis = _attempt(
                 circuit, question, spec, reply.provider, reply.model,
-                backend, workdir, index)
+                backend, workdir, index, part=part)
         except TruncatedReply as exc:
             # Not the model's mistake: it was still writing. Ask again with
             # more room, and say so -- a retry that changes nothing about the
@@ -640,7 +767,7 @@ def solve(question: str, *, provider=None, backend=None, workdir,
                 return Solution(
                     question=question, spec=spec, question_data=data,
                     circ_path=circ_path, table=table, comparison=comparison,
-                    attempts=index, provider=reply.provider,
+                    basis=basis, attempts=index, provider=reply.provider,
                     model=reply.model,
                     failed_attempts=tuple(history))
             failure = comparison.summary

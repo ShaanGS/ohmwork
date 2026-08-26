@@ -65,9 +65,16 @@ def _solve(args) -> int:
     """--solve: a digital question in, a verified circuit out.
 
     Prints the READING before the answer, deliberately. The loop can prove
-    that the circuit computes the specification; nothing here can prove the
-    specification is the right reading of the question. A human glancing at
-    four lines of algebra can catch what no amount of simulation will.
+    that the circuit reproduces what it was checked against; nothing here can
+    prove that THAT is the right reading of the question. A human glancing at
+    four lines of algebra, or at a wiring map, can catch what no amount of
+    simulation will.
+
+    It also prints WHAT the circuit was checked against, because there are
+    two answers and they are different claims: a specification read from the
+    question's words, or -- for a question naming a part this build has
+    measured -- the part's own behaviour, evaluated from a bare one. See
+    ohmwork/partcheck.py.
     """
     from ohmwork.design import DesignError, solve
     from ohmwork.domain import DomainError
@@ -111,11 +118,18 @@ def _solve(args) -> int:
         print(f"no verified circuit: {exc}", file=sys.stderr)
         return 1
 
+    basis = solution.basis
+    print("CHECKED AGAINST: " + basis.headline)
+    print()
     print("THE READING — this is what the circuit was verified AGAINST.")
     print("If this misreads the question, every check below still passes.")
     print()
-    for line in solution.spec.render().splitlines():
+    for line in basis.reading.splitlines():
         print(f"    {line}")
+    print()
+    # An unstated limit reads as no limit. The two bases have different ones,
+    # and a reader who cannot tell them apart has been shown the stronger.
+    print(f"NOT established by any check here: {basis.limit}")
     print()
 
     for index, failure in solution.failed_attempts:
