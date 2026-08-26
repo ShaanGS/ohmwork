@@ -43,6 +43,9 @@ def test_module_table_matches_the_independent_measurements():
                         "circuit built from these offsets and decodes BCD",
         ("7-Segment Display", None): "tests/test_logisim_ttl.py — dead ends in "
                                      "evolution_7447_display.circ",
+        ("Constant", None): "tests/test_logisim_ttl.py — one port at loc, "
+                            "measured across 14 instances and confirmed by "
+                            "Evolution evaluating a circuit driven by it",
     }
     unexplained = set(module) - set(MEASURED) - set(ELSEWHERE)
     assert not unexplained, (

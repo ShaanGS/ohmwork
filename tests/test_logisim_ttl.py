@@ -280,3 +280,49 @@ def test_lamp_test_low_turns_every_segment_on(tmp_path):
     for row in tested:
         assert all(row[f"Q{s}"] == "0" for s in "ABCDEFG"), (
             "lamp test must light every segment")
+
+
+# ------------------------------------------- holding a wire at a level
+
+
+@needs_evolution
+def test_a_constant_really_drives_the_level_it_claims(tmp_path):
+    """The Constant exists so a part's control pins need not become input
+    pins -- an input pin doubles the truth table, and a 7447's three would
+    turn 16 rows into 128.
+
+    That only helps if the level is actually what the file says, so Evolution
+    is asked. Logisim's own default for a Constant is 1, which is exactly why
+    the emitter always writes the value out rather than relying on it.
+    """
+    from ohmwork.logisim_emitter import emit_circ
+
+    circuit = {
+        "components": [
+            {"ref": "IN", "type": "input_pin"},
+            {"ref": "HI", "type": "high"},
+            {"ref": "LO", "type": "low"},
+            {"ref": "AND_HI", "type": "and2"},
+            {"ref": "AND_LO", "type": "and2"},
+            {"ref": "WITH_HIGH", "type": "output_pin"},
+            {"ref": "WITH_LOW", "type": "output_pin"},
+        ],
+        "nets": {
+            "n_in": ["IN.pin", "AND_HI.in0", "AND_LO.in0"],
+            "n_hi": ["HI.out", "AND_HI.in1"],
+            "n_lo": ["LO.out", "AND_LO.in1"],
+            "n_a": ["AND_HI.out", "WITH_HIGH.pin"],
+            "n_b": ["AND_LO.out", "WITH_LOW.pin"],
+        },
+    }
+    path = tmp_path / "constants.circ"
+    path.write_text(emit_circ(circuit), encoding="utf-8")
+
+    rows = evolution_table(path)
+    assert len(rows) == 2, "one input pin: the constants must NOT add rows"
+    for row in rows:
+        # AND with a high constant passes the input through; AND with a low
+        # one is always 0. If either constant carried the wrong level, or
+        # were not connected at all, these would not hold.
+        assert row["WITH_HIGH"] == row["IN"]
+        assert row["WITH_LOW"] == "0"

@@ -269,6 +269,23 @@ def place(circuit):
             meet[f"{comp['ref']}.{port.name}"] = far
             stubs.append((f"{comp['ref']}.{port.name}", (here, far)))
 
+    # A port on TWO nets is not two nets: it is one net written twice, and
+    # in a file the two are electrically identical. The router would give
+    # each its own channel and the two would collide -- which is how this
+    # surfaced, as a geometry error about a layout that was never the
+    # problem. MEASURED on a real design: a 7447's QA wired both to a display
+    # and to an output pin, as separate nets.
+    owner = {}
+    for net, members in sorted(nets.items()):
+        for entry in members:
+            if entry in owner:
+                raise RoutingError(
+                    f"port {entry!r} appears on two nets, {owner[entry]!r} "
+                    f"and {net!r}. A port can only be on one net -- two nets "
+                    f"sharing a port ARE one net. Merge them into a single "
+                    f"net listing every port on it.")
+            owner[entry] = net
+
     wires = []
     stub_owner = {}
     for entry, segment in stubs:

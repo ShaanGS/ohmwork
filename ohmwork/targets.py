@@ -141,6 +141,15 @@ class LogisimTarget:
         # anything real to reject.
         "ttl7447":       ("7447", {}),
         "seven_segment": ("7-Segment Display", {}),
+
+        # Hold a wire at a fixed level without adding an input pin. An input
+        # pin would double the truth table, and a part's control pins are not
+        # part of the question's input space -- the 7447's three would turn
+        # 16 rows into 128. The value is always written out: Logisim's own
+        # default for a Constant is 1, and relying on a default that a file
+        # does not state is how a circuit means something other than it says.
+        "high":          ("Constant", {"value": "0x1"}),
+        "low":           ("Constant", {"value": "0x0"}),
     }
 
     def known_types(self):
@@ -191,6 +200,27 @@ class LogisimTarget:
                     f"Logisim would rewrite it and append an unreproducible "
                     f"hash. Labels must match "
                     f"{logisim_symbols.SAFE_LABEL.pattern}"
+                )
+
+        # MEASURED 2026-08-26, and it cost three design attempts to find:
+        # Logisim's labels are unique CASE-INSENSITIVELY. A circuit with
+        # inputs A, B, C, D and outputs a, b, c, d came back from --tty table
+        # with columns A, B, C, D, x, y, z, u -- the clashing outputs
+        # silently renamed to letters nobody chose. The result is
+        # unmatchable, and nothing in the file says it happened.
+        seen = {}
+        for comp in circuit.get("components", []):
+            label = comp.get("label", comp["ref"])
+            first = seen.setdefault(label.lower(), label)
+            if first != label:
+                problems.append(
+                    f"{comp['ref']}: label {label!r} differs from {first!r} "
+                    f"only by case. Logisim treats labels case-insensitively "
+                    f"and RENAMES the clash to a letter of its own choosing "
+                    f"(a, b, c, d beside A, B, C, D came back as x, y, z, u), "
+                    f"which makes the signal unmatchable in the results. "
+                    f"Rename one of them to something that differs by more "
+                    f"than case."
                 )
         return problems
 

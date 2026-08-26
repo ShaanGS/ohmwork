@@ -230,3 +230,36 @@ def test_origin_still_applies_where_a_value_exists():
     assert carries_a_value({"type": "zener"})
     assert not carries_a_value({"type": "and2"})
     assert not carries_a_value({"type": "input_pin"})
+
+
+def test_labels_differing_only_by_case_are_rejected():
+    """MEASURED, and it cost three design attempts to find.
+
+    A circuit with inputs A, B, C, D and outputs a, b, c, d came back from
+    Logisim's --tty table with columns A, B, C, D, x, y, z, u: the clashing
+    outputs silently renamed to letters nobody chose. Nothing in the file
+    says it happened, and the signal is unmatchable in the results -- the
+    same class of hazard as the VHDL rewrite, and invisible in the same way.
+    """
+    from ohmwork.targets import get_target
+
+    target = get_target("logisim")
+    problems = target.check_labels({"components": [
+        {"ref": "A", "type": "input_pin"},
+        {"ref": "a", "type": "output_pin"},
+    ]})
+
+    assert problems, "a case-only clash must be refused"
+    assert "only by case" in problems[0]
+    assert "x, y, z, u" in problems[0], "say what Logisim actually did"
+
+
+def test_labels_that_differ_by_more_than_case_are_fine():
+    from ohmwork.targets import get_target
+
+    target = get_target("logisim")
+    assert target.check_labels({"components": [
+        {"ref": "A", "type": "input_pin"},
+        {"ref": "Qa", "type": "output_pin"},
+        {"ref": "SEG_A", "type": "output_pin"},
+    ]}) == []

@@ -39,6 +39,7 @@ from pathlib import Path
 from ohmwork.domain import (ANALOG_ADVICE, DomainError, check_digital,
                             check_spec_has_logic, named_parts)
 from ohmwork.llm import LLMError, PoolExhausted
+from ohmwork.logisim_backend import DigitalEvaluationError
 from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.spec import Spec, SpecError, compare_tables, evaluate_spec
 
@@ -107,7 +108,11 @@ Return ONE JSON object and nothing else:
 RULES:
 1. "inputs" and "outputs" are signal names matching [A-Za-z][A-Za-z0-9_]* --
    letters, digits and underscores, starting with a letter. No spaces. Use
-   the names the question uses wherever it gives any.
+   the names the question uses wherever it gives any. No two names may differ
+   only by CASE: Logisim treats labels case-insensitively and renames a clash
+   to a letter of its own choosing. If the question uses A, B, C, D for
+   inputs, do not use a, b, c, d for outputs -- use Qa, Qb, Sa, SEG_A or
+   similar.
 2. "expressions" has one boolean expression per output, over the INPUT names
    only. Allowed: & (AND), | (OR), ^ (XOR), ~ (NOT), parentheses, 0 and 1.
    An output may not appear in any expression, including its own.
@@ -117,16 +122,7 @@ RULES:
    cannot check.
 4. Do not restate the question. Do not explain. JSON only.
 
-REFUSING. This loop builds COMBINATIONAL DIGITAL LOGIC and verifies it in
-Logisim. If the question is not that -- if it asks about voltages, currents,
-waveforms, resistors, capacitors, diodes, transistors, amplifiers, filters,
-timing, clocks, memory or sequential state -- do NOT invent boolean signals
-for it. Return exactly:
-
-{{"unsupported": "one sentence saying what the question actually asks for"}}
-
-Signals that are not two-valued cannot be represented here at all, and a
-specification that pretends otherwise verifies perfectly and means nothing.
+{refusal}
 
 QUESTION:
 {question}
@@ -152,6 +148,10 @@ RULES:
    "output_pin", and its "ref" is EXACTLY the specification's signal name:
      inputs:  {inputs}
      outputs: {outputs}
+   Create NO OTHER input_pin. The evaluator enumerates every input pin, so an
+   extra one doubles the truth table and the result no longer describes the
+   specification. To hold a wire at a fixed level -- a control pin, an unused
+   enable -- use "high" or "low", which are constants and not inputs.
 3. Each component has a unique "ref" and nothing else. Gates take no value,
    no part, and no label.
 4. "nets" maps a net name to the list of ports on it. Every port of every
@@ -170,6 +170,32 @@ SHAPE, exactly. A component carries "ref" and "type" and NOTHING else -- no
  "nets": {{"n_in0": ["IN0.pin", "G1.in0"],
           "n_g1":  ["G1.out", "OUT0.pin"]}}}}
 {retry}"""
+
+#: The refusal channel, and it is deliberately NARROW. Its one job is to
+#: catch a question whose signals are not two-valued -- and it was found
+#: refusing a 7447 question on the grounds that an IC with active-low outputs
+#: is "not pure boolean logic", which is simply wrong. A refusal that fires
+#: on questions this tool CAN answer is worse than no refusal: it teaches the
+#: person to stop asking.
+REFUSAL_RULE = """REFUSING. This loop builds COMBINATIONAL DIGITAL LOGIC. Refuse ONLY if the
+question's signals are not two-valued -- voltages, currents, waveforms,
+resistances, capacitances, frequencies -- or if the circuit must REMEMBER
+something (a counter, a flip-flop, a register, anything clocked). Return
+exactly:
+
+{{"unsupported": "one sentence saying what the question actually asks for"}}
+
+Do NOT refuse for any other reason. In particular: a named logic IC (a 7447,
+a decoder, an encoder, a multiplexer) IS combinational digital logic and is
+in scope. Active-low signals are still boolean -- write the expression that
+produces the 0 or the 1 directly."""
+
+#: When the question names a part this tool has measured, the domain question
+#: is already settled: the circuit is buildable and digital, and the model has
+#: nothing to add by second-guessing that. Offering it a refusal channel here
+#: only creates a way to be wrong.
+NO_REFUSAL_RULE = """This question names {parts}, which this tool supports and can build. It is a
+combinational digital-logic question. Do not refuse it."""
 
 #: Rule 5, when the question named no particular part. Building it from gates
 #: IS the exercise, and a library encoder that answers the question in one
@@ -447,13 +473,37 @@ def _attempt(circuit, question, spec, provider_name, model, backend, workdir,
     try:
         write_circ(question_object.circuit, circ_path)
     except Exception as exc:                                    # noqa: BLE001
+        # Keep the rejected design. A routing failure is a fact about a
+        # LAYOUT, and reasoning about one from an error message alone means
+        # reconstructing the circuit by guesswork -- which is how an hour
+        # goes missing. The file costs nothing and is the evidence.
+        (Path(workdir) / f"rejected{index}.json").write_text(
+            json.dumps(circuit, indent=1), encoding="utf-8")
         raise DesignError(f"the circuit could not be emitted: {exc}") from exc
 
     # THE FILE just written is the one handed over -- never a netlist built
     # alongside it. That is the project's core design principle, and this is
     # the line that keeps it true one layer up.
-    table = backend.truth_table(circ_path, list(spec.inputs),
-                                list(spec.outputs))
+    try:
+        table = backend.truth_table(circ_path, list(spec.inputs),
+                                    list(spec.outputs))
+    except DigitalEvaluationError as exc:
+        # The evaluator disagreeing with the circuit is a DESIGN failure, to
+        # be fed back, not a crash. The commonest shape: the circuit carries
+        # input pins the specification does not have, so Logisim enumerates
+        # more combinations than the spec describes. Name them -- the model
+        # cannot fix "expected 16 rows, got 128".
+        extra = [c["ref"] for c in circuit.get("components", [])
+                 if c.get("type") == "input_pin" and c["ref"] not in spec.inputs]
+        hint = ""
+        if extra:
+            hint = (f" The circuit has input pin(s) {', '.join(extra)} that "
+                    f"the specification does not list, so the evaluator "
+                    f"enumerates them too. Every input pin must be one of: "
+                    f"{', '.join(spec.inputs)}. To hold a control pin at a "
+                    f"fixed level, use a 'high' or 'low' component instead of "
+                    f"an input pin.")
+        raise DesignError(f"{exc}{hint}") from exc
     comparison = compare_tables(evaluate_spec(spec), table)
     return data, circ_path, table, comparison
 
@@ -513,8 +563,12 @@ def solve(question: str, *, provider=None, backend=None, workdir,
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
 
+    parts = named_parts(question)
+    refusal = (NO_REFUSAL_RULE.format(parts=" and ".join(parts)) if parts
+               else REFUSAL_RULE)
     spec = _ask_until_it_fits(
-        provider, SPEC_PROMPT.format(question=question),
+        provider,
+        SPEC_PROMPT.format(question=question, refusal=refusal),
         SPEC_MAX_TOKENS, parse_spec_reply, "the specification")
     # LAYER 3: a spec with no logic in it verifies perfectly and means
     # nothing. Checked BEFORE the reading is emitted, so a refused question
@@ -531,7 +585,6 @@ def solve(question: str, *, provider=None, backend=None, workdir,
     # A question that says "using the 7447-decoder IC" is not asking for an
     # equivalent built from gates, and a loop that silently gives it one has
     # answered a neighbouring question.
-    parts = named_parts(question)
     parts_rule = (NAMED_PARTS_RULE.format(parts=" and ".join(parts))
                   if parts else PRIMITIVES_RULE)
 

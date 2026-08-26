@@ -339,3 +339,36 @@ def test_a_DIP_sized_part_does_not_collide_with_the_component_below_it():
             rows.setdefault(ay + port.dy, set()).add(placement["ref"])
     for y, refs in sorted(rows.items()):
         assert len(refs) == 1, f"y={y} carries ports of {sorted(refs)}"
+
+
+def test_a_port_on_two_nets_is_refused_as_a_NET_error_not_a_geometry_one():
+    """Found in a real design: a 7447's QA wired to a display on one net and
+    to an output pin on another.
+
+    The two are electrically identical, so this is one net written twice.
+    The router gave each its own channel and they collided -- surfacing as a
+    geometry error about a layout that was never the problem, which is the
+    worst kind of message: correct, and pointing at the wrong thing.
+    """
+    from ohmwork.logisim_emitter import RoutingError, place
+
+    circuit = {
+        "components": [
+            {"ref": "IN", "type": "input_pin"},
+            {"ref": "G", "type": "not"},
+            {"ref": "OUT1", "type": "output_pin"},
+            {"ref": "OUT2", "type": "output_pin"},
+        ],
+        "nets": {
+            "a": ["IN.pin", "G.in0"],
+            "b": ["G.out", "OUT1.pin"],
+            "c": ["G.out", "OUT2.pin"],
+        },
+    }
+    with pytest.raises(RoutingError) as caught:
+        place(circuit)
+
+    message = str(caught.value)
+    assert "G.out" in message and "two nets" in message
+    assert "'b'" in message and "'c'" in message
+    assert "Merge them" in message

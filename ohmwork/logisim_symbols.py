@@ -69,6 +69,7 @@ DISCRIMINATOR = {
     # and their geometry is NOT this one.
     "7447": None,
     "7-Segment Display": None,
+    "Constant": None,
 }
 
 # Attributes that invalidate the measurements if present, per component.
@@ -158,6 +159,14 @@ PORTS: dict[tuple[str, str | None], list[Port]] = {
         Port("QF", 30, -30, "out"),     # pin 15
     ],
 
+    # A Constant: ONE port, at loc, like a Pin. Measured across 14 instances
+    # in public Evolution files; 11 of them wire exactly (0,0) and the other
+    # three leave it unwired. It exists so a control pin can be held at a
+    # fixed level WITHOUT becoming an input pin -- an input pin doubles the
+    # truth table, and a 7447's three active-low control pins would turn 16
+    # rows into 128.
+    ("Constant", None): [Port("out", 0, 0, "out")],
+
     # The seven-segment display. Geometry measured in every instance across
     # three files; the SEGMENT NAMES come from tracing a working circuit --
     # whichever display port shares a net with the 7447's QA is segment a --
@@ -212,6 +221,7 @@ LIB_OF = {
     "Priority Encoder": "#Plexers",
     "7447": "#TTL",
     "7-Segment Display": "#I/O",
+    "Constant": "#Wiring",
 }
 
 

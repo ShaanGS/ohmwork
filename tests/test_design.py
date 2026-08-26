@@ -491,3 +491,38 @@ def test_a_first_time_success_reports_no_failures(tmp_path):
                      backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
                      workdir=tmp_path)
     assert solution.failed_attempts == ()
+
+
+def test_a_question_naming_a_supported_part_is_not_offered_a_refusal_channel():
+    """Measured against a real model: asked to spec the 7447 question, it
+    used the refusal channel, reasoning that an IC with active-low outputs is
+    "not representable as pure combinational boolean logic". That is simply
+    wrong -- a 7447 is combinational -- and a refusal that fires on questions
+    this tool CAN answer is worse than none: it teaches the person to stop
+    asking.
+
+    So when the question names a part this tool has measured, the domain
+    question is already settled and the channel is not offered at all.
+    """
+    from ohmwork.design import NO_REFUSAL_RULE, REFUSAL_RULE
+
+    provider = FakeProvider([SPEC_JSON, design_reply()])
+    solve("Design a BCD to seven-segment circuit using the 7447 decoder IC.",
+          provider=provider, backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+          workdir=None if False else __import__("tempfile").mkdtemp())
+
+    spec_prompt = provider.prompts[0]
+    assert "Do not refuse it" in spec_prompt
+    assert "unsupported" not in spec_prompt
+
+
+def test_a_question_naming_nothing_still_gets_the_refusal_channel():
+    provider = FakeProvider([SPEC_JSON, design_reply()])
+    solve(QUESTION, provider=provider,
+          backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+          workdir=__import__("tempfile").mkdtemp())
+
+    spec_prompt = provider.prompts[0]
+    assert "unsupported" in spec_prompt
+    # ...and it names what a refusal is FOR, so it does not fire on an IC.
+    assert "not two-valued" in spec_prompt
