@@ -385,6 +385,39 @@ def test_a_malformed_SPEC_reply_is_retried_then_given_up_on(tmp_path):
               workdir=tmp_path)
 
 
+def test_a_lone_provider_waits_out_a_short_rate_limit(tmp_path):
+    """The pool moves members on RateLimited; a lone provider has nowhere
+    to move. MEASURED 2026-08-31: gemini's HTTP 503 ("high demand ...
+    usually temporary") is classified RateLimited with a 10 s cooldown FOR
+    THE POOL'S BENEFIT, and a single-provider run died on it. Waiting a
+    short cooldown costs seconds; dying costs the run. A wait spends no
+    attempt -- nothing was designed and nothing failed."""
+    from ohmwork.llm import RateLimited
+
+    provider = FlubbingProvider(
+        [SPEC_JSON, RateLimited("busy", retry_after=0.01), design_reply()])
+    solution = solve(QUESTION, provider=provider,
+                     backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                     workdir=tmp_path)
+
+    assert solution.comparison.agrees
+    assert solution.attempts == 1
+    assert not solution.failed_attempts
+
+
+def test_a_rate_limit_too_long_to_wait_out_still_surfaces(tmp_path):
+    """A retry_after in the thousands is a quota story: sleeping through
+    it silently would look like a hang. Tell the human instead."""
+    from ohmwork.llm import RateLimited
+
+    provider = FlubbingProvider(
+        [SPEC_JSON, RateLimited("come back later", retry_after=2400.0)])
+    with pytest.raises(DesignError, match="could not be reached"):
+        solve(QUESTION, provider=provider,
+              backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+              workdir=tmp_path)
+
+
 def test_an_unreachable_network_on_the_SPEC_call_gives_up_bounded(tmp_path):
     from ohmwork.llm import TransientNetworkError
 

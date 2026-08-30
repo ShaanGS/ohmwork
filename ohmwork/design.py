@@ -39,7 +39,7 @@ from pathlib import Path
 from ohmwork.domain import (ANALOG_ADVICE, DomainError, check_digital,
                             check_spec_has_logic, named_parts)
 from ohmwork.llm import (LLMError, MalformedReply, PoolExhausted,
-                         TransientNetworkError)
+                         RateLimited, TransientNetworkError)
 from ohmwork.logisim_backend import DigitalEvaluationError
 from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.partcheck import (WiringError, derive_wiring, name_conflicts,
@@ -606,6 +606,36 @@ def _reading(spec, part, target) -> str:
     return "\n".join(lines)
 
 
+#: The longest a single-provider call will sleep on one rate limit before
+#: giving up and telling the human instead. A provider asking for more than
+#: this ("try again in 2400s") is a quota story, not a pause.
+MAX_SINGLE_WAIT = 120.0
+
+
+def _complete_patiently(provider, prompt, *, max_tokens):
+    """Honour a rate limit when there is no pool to move on to.
+
+    The pool never raises RateLimited -- it moves members, waits itself, and
+    raises PoolExhausted -- so this engages only in single-provider mode.
+    MEASURED 2026-08-31: gemini answered a design call with HTTP 503 "high
+    demand ... usually temporary", classified RateLimited with a 10 s
+    cooldown FOR THE POOL'S BENEFIT, and the lone-provider run died on it.
+    Waiting ten seconds twice is cheaper than losing the run.
+    """
+    import time
+
+    waits = 2
+    while True:
+        try:
+            return provider.complete(prompt, max_tokens=max_tokens,
+                                     json_object=True)
+        except RateLimited as exc:
+            if waits <= 0 or exc.retry_after > MAX_SINGLE_WAIT:
+                raise
+            waits -= 1
+            time.sleep(exc.retry_after)
+
+
 def _ask_until_it_fits(provider, prompt, budget, parse, what):
     """Ask, and if the answer was cut off, ask again with more room.
 
@@ -617,8 +647,7 @@ def _ask_until_it_fits(provider, prompt, budget, parse, what):
     transient_left = 2
     while True:
         try:
-            reply = provider.complete(prompt, max_tokens=budget,
-                                      json_object=True)
+            reply = _complete_patiently(provider, prompt, max_tokens=budget)
         except PoolExhausted:
             # Nobody could be asked. The question was never wrong and no
             # circuit was ever designed; wrapping this as a design failure
@@ -779,8 +808,7 @@ def solve(question: str, *, provider=None, backend=None, workdir,
             retry=retry)
         emit("attempt", {"index": index, "status": "designing"})
         try:
-            reply = provider.complete(prompt, max_tokens=budget,
-                                      json_object=True)
+            reply = _complete_patiently(provider, prompt, max_tokens=budget)
         except TransientNetworkError as exc:
             # The wire failed, not the design. Spend the attempt and ask
             # again -- and leave last_error alone: the model never saw this

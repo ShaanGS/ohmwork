@@ -487,8 +487,8 @@ def solve_analog(question: str, *, provider=None, backend=None, workdir,
                                       nets=nets, retry=retry)
         emit("attempt", {"index": index, "status": "designing"})
         try:
-            reply = provider.complete(prompt, max_tokens=budget,
-                                      json_object=True)
+            from ohmwork.design import _complete_patiently
+            reply = _complete_patiently(provider, prompt, max_tokens=budget)
         except PoolExhausted:
             raise
         except TransientNetworkError as exc:
