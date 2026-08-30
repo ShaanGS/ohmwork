@@ -179,7 +179,11 @@ function Solver({ onExpired }) {
         body: JSON.stringify({ question: text }),
       })
     } catch {
-      setError({ message: 'could not reach the server' })
+      // A dead server is NOT a failed design. `connection: true` gets its
+      // own card: rendering this as "no verified circuit" told a person
+      // their circuit failed when nothing was ever asked.
+      setError({ message: 'could not reach the local solver — it may have '
+        + 'stopped. Restart Ohmwork and ask again.', connection: true })
       setRunning(false)
       return
     }
@@ -191,18 +195,24 @@ function Solver({ onExpired }) {
       return
     }
 
-    for await (const [name, data] of sseStream(response)) {
-      if (name === 'routing') setRouting(data)
-      else if (name === 'reading') setReading(data)
-      else if (name === 'attempt') {
-        setAttempts((previous) => [
-          ...previous.filter((a) => a.index !== data.index), data,
-        ].sort((a, b) => a.index - b.index))
-      } else if (name === 'verified') setVerified(data)
-      else if (name === 'measured') setMeasured(data)
-      else if (name === 'refused') setRefused(data)
-      else if (name === 'unavailable') setUnavailable(data)
-      else if (name === 'error') setError(data)
+    try {
+      for await (const [name, data] of sseStream(response)) {
+        if (name === 'routing') setRouting(data)
+        else if (name === 'reading') setReading(data)
+        else if (name === 'attempt') {
+          setAttempts((previous) => [
+            ...previous.filter((a) => a.index !== data.index), data,
+          ].sort((a, b) => a.index - b.index))
+        } else if (name === 'verified') setVerified(data)
+        else if (name === 'measured') setMeasured(data)
+        else if (name === 'refused') setRefused(data)
+        else if (name === 'unavailable') setUnavailable(data)
+        else if (name === 'error') setError(data)
+      }
+    } catch {
+      // The stream broke mid-solve. Same fact as above, at a later moment.
+      setError({ message: 'the connection to the local solver was lost '
+        + 'mid-solve. Restart Ohmwork and ask again.', connection: true })
     }
     setRunning(false)
   }
@@ -838,6 +848,29 @@ function Unavailable({ info }) {
 
 
 function Failed({ error }) {
+  // Two different facts share this card's shape and must not share its
+  // words: a design the evaluator rejected, and a solver that could not be
+  // reached at all. The second says nothing about the circuit or the
+  // question, so it gets neither the "no verified circuit" headline nor the
+  // evaluator boilerplate.
+  if (error.connection) {
+    return (
+      <Card className="animate-in fade-in slide-in-from-bottom-2">
+        <CardContent className="space-y-3">
+          <p className="flex items-center gap-2 text-sm">
+            <CircleAlert className="size-4 text-muted-foreground" />
+            the local solver is not reachable
+          </p>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {error.message}
+          </p>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Nothing was designed and nothing is wrong with your question.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
   return (
     <Card className="border-destructive/40 bg-destructive/5 animate-in fade-in
                      slide-in-from-bottom-2">

@@ -280,3 +280,77 @@ def test_the_number_of_reported_differences_is_capped(caplog):
     assert len(result.differences) == 8, "all differences are still recorded"
     assert result.summary.count("expected") <= 3
     assert "8" in result.summary
+
+
+# --------------------------------------- the priority gate (incident 24)
+
+# A live solve produced Y0 = EN&(D3|D1) for a priority encoder -- verified
+# in one attempt, externally, 32 of 32 rows, over a spec that answers 11
+# where priority says 10. A prompt nudge was tried first and FAILED: the
+# same model re-wrote the same wrong algebra and added a note CLAIMING the
+# masking it does not do. So the defence is mechanical: does ANY priority
+# order explain the spec's own table? Brute force, deterministic, and the
+# failure message quotes the rows so it can be fed back to the model.
+
+from ohmwork.spec import check_priority_encoder  # noqa: E402
+
+PRIORITY_QUESTION = ("Design a 4-to-2 priority encoder with an enable input "
+                     "and a valid output, using basic gates only.")
+
+
+def priority_spec(y0):
+    return Spec(
+        inputs=("D3", "D2", "D1", "D0", "EN"),
+        outputs=("Y1", "Y0", "V"),
+        expressions={"Y1": "EN&(D3|D2)", "Y0": y0,
+                     "V": "EN&(D3|D2|D1|D0)"})
+
+
+def test_the_live_incidents_wrong_spec_is_caught_with_its_rows_quoted():
+    problem = check_priority_encoder(PRIORITY_QUESTION,
+                                     priority_spec("EN&(D3|D1)"))
+    assert problem is not None
+    # The message must carry a concrete differing row, because it is fed
+    # back to a model that has already ignored the same advice as prose.
+    assert "D2=1" in problem and "D1=1" in problem
+    assert "as if only" in problem
+
+
+def test_the_correct_priority_spec_passes():
+    assert check_priority_encoder(
+        PRIORITY_QUESTION, priority_spec("EN&(D3|(D1&~D2))")) is None
+
+
+def test_a_reversed_priority_order_also_passes():
+    """The gate checks that SOME order explains the table, never that a
+    particular one does: which end has priority is the model's documented
+    choice, and the reading screen is where a human checks it."""
+    spec = Spec(
+        inputs=("D3", "D2", "D1", "D0", "EN"),
+        outputs=("Y1", "Y0", "V"),
+        expressions={"Y1": "EN&(D0|D1)" , "Y0": "EN&(D0|(D2&~D1))",
+                     "V": "EN&(D3|D2|D1|D0)"})
+    # D0 highest: D0->11? No -- encode index of highest-priority active input
+    # under order D0 > D1 > D2 > D3 as (Y1,Y0) = 3-index... simply assert the
+    # brute force finds ITS order rather than asserting our arithmetic:
+    problem = check_priority_encoder(PRIORITY_QUESTION, spec)
+    assert problem is None
+
+
+def test_a_question_that_is_not_a_priority_encoder_is_left_alone():
+    assert check_priority_encoder(
+        "Design a 2-to-4 decoder with an active-high enable.",
+        priority_spec("EN&(D3|D1)")) is None
+
+
+def test_unrecognisable_data_inputs_disarm_the_gate_rather_than_misfire():
+    spec = Spec(inputs=("REQ_A", "REQ_B"), outputs=("G",),
+                expressions={"G": "REQ_A|REQ_B"})
+    assert check_priority_encoder(PRIORITY_QUESTION, spec) is None
+
+
+def test_disabled_rows_do_not_constrain_the_order():
+    """With EN=0 every output is 0 on every row; identical outputs satisfy
+    any order, so an enable input must not create false violations."""
+    assert check_priority_encoder(
+        PRIORITY_QUESTION, priority_spec("EN&(D3|(D1&~D2))")) is None

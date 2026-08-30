@@ -44,7 +44,8 @@ from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.partcheck import (WiringError, derive_wiring, name_conflicts,
                                part_basis, predict_table, probe_table,
                                probeable, spec_basis)
-from ohmwork.spec import Spec, SpecError, compare_tables, evaluate_spec
+from ohmwork.spec import (Spec, SpecError, check_priority_encoder,
+                          compare_tables, evaluate_spec)
 
 #: Bounded for the same reason extract.py bounds its retries: a model that
 #: cannot satisfy the verifier in a few attempts will not on the tenth, and
@@ -123,6 +124,8 @@ RULES:
    what the outputs do when disabled -- CHOOSE, and record each choice in
    "notes" as one sentence. A choice left unstated is a choice a reader
    cannot check.
+   For a PRIORITY encoder, mask every lower-priority input out of the code
+   expressions with the inputs above it (D3 | (D1 & ~D2), never D3 | D1).
 4. Do not restate the question. Do not explain. JSON only.
 
 {refusal}
@@ -224,6 +227,14 @@ YOUR PREVIOUS DESIGN WAS REJECTED:
 {error}
 
 Fix exactly that and return the whole object again.
+"""
+
+SPEC_RETRY_BLOCK = """
+YOUR PREVIOUS SPECIFICATION WAS REJECTED. The differing rows below were
+computed from your own expressions -- fix the expressions so the rows come
+out right, and return the whole object again:
+
+{error}
 """
 
 
@@ -679,6 +690,27 @@ def solve(question: str, *, provider=None, backend=None, workdir,
     # nothing. Checked BEFORE the reading is emitted, so a refused question
     # never renders a reading that looks like the start of an answer.
     check_spec_has_logic(spec)
+
+    # LAYER 4, incident 24: a wrong-priority spec verifies perfectly too --
+    # the circuit implements it faithfully and Logisim confirms every row.
+    # A deterministic gate checks the spec's own table against the property
+    # its question demands, feeds the differing rows back ONCE, and then
+    # fails rather than serving a green badge over a wrong encoder. One
+    # retry, not several: the check is deterministic, so a model that gets
+    # the same rows back and writes the same algebra again is not converging.
+    problem = check_priority_encoder(question, spec)
+    if problem:
+        spec = _ask_until_it_fits(
+            provider,
+            SPEC_PROMPT.format(question=question, refusal=refusal)
+            + SPEC_RETRY_BLOCK.format(error=problem),
+            SPEC_MAX_TOKENS, parse_spec_reply, "the specification")
+        check_spec_has_logic(spec)
+        problem = check_priority_encoder(question, spec)
+        if problem:
+            raise DesignError(
+                "no specification that is actually a priority encoder, after "
+                "the differing rows were fed back once:\n" + problem)
 
     # THE REFERENCE, measured once. For a part-named question the model's
     # expressions are its memory of a datasheet, so they are not what the

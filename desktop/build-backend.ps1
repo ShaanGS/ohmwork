@@ -28,4 +28,12 @@ python -m PyInstaller --noconfirm --clean --onefile `
   --collect-all spicelib `
   $entry
 
+# $ErrorActionPreference does not fail a script on a native command's exit
+# code, and this script once printed the success line below after PyInstaller
+# had died on a locked work directory and produced NO executable at all. The
+# executable existing is the claim, so it is checked, not announced.
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE" }
+$exe = Join-Path $out ($(if ($IsWindows -or $env:OS -eq "Windows_NT") { "ohmwork-server.exe" } else { "ohmwork-server" }))
+if (-not (Test-Path $exe)) { throw "PyInstaller reported success but $exe does not exist" }
+
 Write-Host "Desktop backend written to $out"

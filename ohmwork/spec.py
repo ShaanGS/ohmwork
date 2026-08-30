@@ -335,6 +335,100 @@ def evaluate_spec(spec: Spec) -> SpecTable:
                      rows=tuple(rows))
 
 
+# ------------------------------------------------- the priority gate
+#
+# Incident 24: a live solve produced Y0 = EN&(D3|D1) for a priority encoder
+# and it VERIFIED -- externally, all 32 rows -- because the circuit
+# faithfully implemented a spec that answers code 11 where priority says 10.
+# A prompt nudge was tried first and FAILED, measurably: the same model
+# re-wrote the same wrong algebra and added a note CLAIMING the masking it
+# does not do. Prose does not fix this; arithmetic does.
+
+_PRIORITY_QUESTION = re.compile(r"priority[\s-]+encoder", re.IGNORECASE)
+_DATA_INPUT = re.compile(r"^[DI]\d+$", re.IGNORECASE)
+
+
+def check_priority_encoder(question: str, spec) -> str | None:
+    """Does ANY priority order explain the spec's own table?
+
+    The defining property, independent of which end has priority and of
+    which code names which input: for every row where several data inputs
+    are active, the outputs must equal the row where ONLY the winner is
+    active. Both sides come from the spec itself, so this cannot smuggle in
+    OUR reading of the question -- it only checks the spec's internal claim
+    to BE a priority encoder, which the question's own words demand.
+
+    Deliberately conservative about when it applies: the question must say
+    "priority encoder", and the data inputs must be recognisable (D0..Dn or
+    I0..In, the names every lab manual uses -- and rule 1 of the spec
+    prompt makes the model reuse the question's names). When the shape
+    cannot be identified the gate DISARMS rather than guessing, and the
+    reading screen remains the defence, as it is for every question class
+    this gate has never heard of.
+
+    Returns None when the property holds or the gate does not apply;
+    otherwise a message quoting the differing rows, written to be fed back
+    to the model that wrote the spec.
+    """
+    from itertools import permutations
+
+    if not _PRIORITY_QUESTION.search(question):
+        return None
+    data = [name for name in spec.inputs if _DATA_INPUT.match(name)]
+    if len(data) < 2 or len(data) > 8:
+        return None
+
+    others = [name for name in spec.inputs if name not in data]
+    table = evaluate_spec(spec)
+    outputs_by_inputs = {row[:len(spec.inputs)]: row[len(spec.inputs):]
+                         for row in table.rows}
+
+    def outputs_for(assignment: dict) -> tuple:
+        return outputs_by_inputs[tuple(assignment[name]
+                                       for name in spec.inputs)]
+
+    best_violations = None
+    for order in permutations(data):
+        violations = []
+        for other_bits in product((0, 1), repeat=len(others)):
+            base = dict(zip(others, other_bits))
+            for data_bits in product((0, 1), repeat=len(data)):
+                if sum(data_bits) < 2:
+                    continue
+                row = dict(base)
+                row.update(zip(data, data_bits))
+                winner = next(name for name in order if row[name])
+                solo = dict(base, **{name: 0 for name in data})
+                solo[winner] = 1
+                if outputs_for(row) != outputs_for(solo):
+                    violations.append((row, winner, outputs_for(row),
+                                       outputs_for(solo)))
+        if not violations:
+            return None
+        if best_violations is None or len(violations) < len(best_violations[0]):
+            best_violations = (violations, order)
+
+    violations, order = best_violations
+    shown = []
+    for row, winner, got, wanted in violations[:3]:
+        active = ", ".join(f"{name}=1" for name in data if row[name])
+        context = ", ".join(f"{name}={row[name]}" for name in others)
+        outs = ", ".join(f"{name}={bit}"
+                         for name, bit in zip(spec.outputs, got))
+        want = ", ".join(f"{name}={bit}"
+                         for name, bit in zip(spec.outputs, wanted))
+        shown.append(
+            f"  with {active}" + (f" ({context})" if context else "") +
+            f" the spec answers {outs}, but a priority encoder must answer "
+            f"exactly as if only {winner} were high: {want}")
+    return (
+        f"the expressions do not describe a priority encoder under ANY "
+        f"priority order. The closest order ({' > '.join(order)}) still "
+        f"fails {len(violations)} row(s):\n" + "\n".join(shown) + "\n"
+        f"Mask every lower-priority input out of the code expressions with "
+        f"the inputs above it.")
+
+
 # --------------------------------------------------------- the comparison
 
 @dataclass(frozen=True)
