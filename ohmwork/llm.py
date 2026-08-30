@@ -400,14 +400,37 @@ class AnthropicProvider:
                 messages=[{"role": "user", "content": content}],
             )
         except Exception as e:                          # noqa: BLE001
-            raise LLMError(
-                f"Anthropic request failed: {type(e).__name__}: {e}") from None
+            raise self._explain(e) from None
 
         if getattr(message, "stop_reason", None) == "refusal":
             raise LLMError("the model declined this request")
         text = "".join(block.text for block in message.content
                        if block.type == "text").strip()
         return Reply(text=text, model=self.model, provider=self.name)
+
+    def _explain(self, error: Exception) -> LLMError:
+        """Classify by the same facts the other providers classify by.
+
+        Written the day a PAID key arrived: every failure class that killed
+        a free-tier run this week (timeout, 429, overload) would kill a paid
+        run identically if the SDK's errors all wrap into one generic fatal
+        LLMError. Matched on type NAME so the tests need no SDK installed.
+        """
+        kind = type(error).__name__.lower()
+        text = str(error)
+        if "timeout" in kind or "connection" in kind:
+            return TransientNetworkError(
+                f"Anthropic: {type(error).__name__}: {error}")
+        status = getattr(error, "status_code", None)
+        if "ratelimit" in kind or status == 429:
+            return RateLimited(f"Anthropic is rate limiting: {text[:200]}",
+                               retry_after=_retry_after({}, text))
+        if (status is not None and status >= 500) or "overloaded" in text.lower():
+            return RateLimited(
+                f"Anthropic is temporarily unavailable: {text[:160]}",
+                retry_after=TRANSIENT_COOLDOWN)
+        return LLMError(
+            f"Anthropic request failed: {type(error).__name__}: {error}")
 
 
 # ------------------------------------------ one client, every free tier

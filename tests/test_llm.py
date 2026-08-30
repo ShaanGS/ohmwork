@@ -58,14 +58,16 @@ class FakeGroq:
 
 
 class FakeAnthropic:
-    def __init__(self, reply="a caption"):
-        self.reply = reply
+    def __init__(self, reply="a caption", raise_error=None):
+        self.reply, self.raise_error = reply, raise_error
         self.calls = []
         outer = self
 
         class Messages:
             def create(self, **kwargs):
                 outer.calls.append(kwargs)
+                if outer.raise_error:
+                    raise outer.raise_error
                 block = type("B", (), {"type": "text", "text": outer.reply})()
                 return type("R", (), {"content": [block],
                                       "stop_reason": "end_turn"})()
@@ -77,8 +79,8 @@ def groq(**kw):
     return llm.GroqProvider(model="test-model", client=FakeGroq(**kw))
 
 
-def anthropic():
-    return llm.AnthropicProvider(model="test-model", client=FakeAnthropic())
+def anthropic(**kw):
+    return llm.AnthropicProvider(model="test-model", client=FakeAnthropic(**kw))
 
 
 # ------------------------------------------------------- the seam is real
@@ -226,6 +228,43 @@ def test_a_groq_rate_limit_arrives_as_RateLimited_so_a_pool_can_move_on():
     with pytest.raises(llm.RateLimited) as excinfo:
         provider.complete("hello")
     assert excinfo.value.retry_after == pytest.approx(8.5)
+
+
+# ----------------------------------- Anthropic failures are classified too
+
+
+def test_an_anthropic_rate_limit_arrives_as_RateLimited():
+    """Written the day a PAID Anthropic key arrived. Every failure class
+    that killed a free-tier run this week -- timeout, 429, overload -- would
+    kill a paid run identically if Anthropic's SDK errors all wrap into one
+    generic fatal LLMError. Same classification the other providers have."""
+    error = type("RateLimitError", (Exception,), {"status_code": 429})(
+        "rate limited")
+    with pytest.raises(llm.RateLimited):
+        anthropic(raise_error=error).complete("hello")
+
+
+def test_an_anthropic_timeout_arrives_as_TransientNetworkError():
+    error = type("APITimeoutError", (Exception,), {})("Request timed out")
+    with pytest.raises(llm.TransientNetworkError):
+        anthropic(raise_error=error).complete("hello")
+
+
+def test_an_anthropic_overload_is_transient_not_fatal():
+    """529 overloaded_error is Anthropic having a moment, not a dead key."""
+    error = type("InternalServerError", (Exception,), {"status_code": 529})(
+        "overloaded_error: Overloaded")
+    with pytest.raises(llm.RateLimited):
+        anthropic(raise_error=error).complete("hello")
+
+
+def test_an_ordinary_anthropic_failure_stays_a_plain_LLMError():
+    error = type("BadRequestError", (Exception,), {"status_code": 400})(
+        "invalid request")
+    with pytest.raises(llm.LLMError) as caught:
+        anthropic(raise_error=error).complete("hello")
+    assert not isinstance(caught.value,
+                          (llm.RateLimited, llm.TransientNetworkError))
 
 
 # ------------------------------------------------------------------ images
