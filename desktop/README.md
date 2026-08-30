@@ -58,11 +58,45 @@ if `python` is not the interpreter that has Ohmwork's dependencies.
 
 ## Release work still required
 
+### 1. The evaluator is not in the installer, and without it nothing verifies
+
+**This is the release blocker, and it is bigger than the packaging one.** The
+installer ships the Python backend and the page. It does not ship **Logisim
+Evolution or a JRE**, and Logisim is the entire reason an answer here is worth
+anything: it is the outside tool that checks the emitted file.
+
+What happens on a machine that does not already have it, measured rather than
+assumed: `locate_logisim()` finds nothing, `best_available_backend()` falls
+back to `InternalLogicBackend`, and its `truth_table` raises
+`NotImplementedError` on the first solve. Every question fails. The app looks
+installed and works for nothing.
+
+Three honest ways out, none of them chosen here:
+
+- **Bundle it.** The jar is ~50 MB and needs Java 21; a `jlink` runtime with
+  only the modules Logisim uses is ~40 MB. Biggest installer, zero
+  instructions, and the version stays PINNED — which matters, because every
+  published number in this project was measured against 4.1.0.
+- **Require it, and check at startup.** Refuse to start with a message naming
+  the download, the way the server refuses to start without a password. Small
+  installer, one instruction, fails closed and loudly.
+- **Ship it broken with a warning.** Not acceptable: this project's whole
+  claim is that an outside tool checked the answer, and an app that silently
+  cannot check anything is the failure it exists to prevent.
+
+Until one of those lands, the desktop app is a **development-mode tool for a
+machine that already has Logisim installed**, which is exactly what the
+"Running it from this clone" section above describes.
+
+### 2. A platform-native backend executable
+
 An installer must package the Python backend as a platform-native executable.
 That is intentionally not faked here: a Windows executable cannot make a Mac
 app, and macOS must be built and tested on macOS. The required next step is a
 PyInstaller build on each target platform, copied into `desktop-backend/` for
 Electron Builder's `extraResources` section.
+
+### 3. Signing
 
 Unsigned apps are usable for testing, but macOS Gatekeeper and Windows
 SmartScreen warn. A trusted public Mac build needs an Apple Developer

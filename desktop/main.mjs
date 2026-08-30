@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 let backend = null;
 let backendPort = null;
+// Electron does not track this for us; see the `before-quit` handler.
+let quitting = false;
 const PROVIDER_KEYS = new Set([
   "GROQ_API_KEY", "GEMINI_API_KEY", "MISTRAL_API_KEY",
   "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"
@@ -132,7 +134,7 @@ async function startBackend() {
   let diagnostics = "";
   backend.stderr.on("data", (chunk) => { diagnostics += chunk.toString(); });
   backend.once("exit", (code) => {
-    if (code !== 0 && !app.isQuitting) {
+    if (code !== 0 && !quitting) {
       dialog.showErrorBox("Ohmwork stopped", diagnostics || `The local backend exited with code ${code}.`);
     }
   });
@@ -213,4 +215,13 @@ app.whenReady().then(async () => {
 }).catch((error) => { dialog.showErrorBox("Ohmwork could not start", String(error)); app.quit(); });
 
 app.on("window-all-closed", () => app.quit());
-app.on("before-quit", () => { if (backend && !backend.killed) backend.kill(); });
+app.on("before-quit", () => {
+  // SET BEFORE THE KILL, and that ordering is the whole point. Killing the
+  // backend makes it exit non-zero, and the `exit` handler above shows an
+  // error box for any non-zero exit that is not a shutdown. Electron never
+  // sets `isQuitting` itself, so without this line a perfectly normal quit
+  // raises "Ohmwork stopped" over a backend that stopped because it was told
+  // to.
+  quitting = true;
+  if (backend && !backend.killed) backend.kill();
+});
