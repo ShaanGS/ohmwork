@@ -20,19 +20,27 @@ from ohmwork.symbols import (
     VALUE_TYPES,
     pin_positions,
     pins_of,
+    rotate,
     stub_directions,
 )
 
 STUB_LEN = 16
 GRID_X0 = 112        # the source column, left of every net column
 GRID_Y0 = 160
-COL_SPACING = 224    # wide enough for an npn plus its base stub and label
+COL_SPACING = 288    # room for a body plus its labels on both sides
 TEXT_X = 112         # directives go below the drawing
-TEXT_Y0 = 560
+TEXT_Y0 = 672
 TEXT_SPACING = 32
 
-RAIL_Y = GRID_Y0         # the horizontal signal rail series parts sit on
-SHUNT_Y = RAIL_Y + 144   # shunt parts hang below it, ground pointing down
+RAIL_Y = GRID_Y0         # the top series row
+#: Series rows, top first. A second row exists because parallel branches
+#: (a bridge's two feed diodes) overlap in x on one row -- the owner's
+#: screenshot showed D1 drawn into D2. A human draws a bridge as two
+#: rows of diodes; so does this.
+ROW_ANCHORS = (RAIL_Y, RAIL_Y + 96)
+#: Shunt parts hang well below both rows, ground pointing down. Far
+#: enough that a row-2 wire never touches a shunt's top pin.
+SHUNT_Y = RAIL_Y + 256
 NET_X0 = GRID_X0 + COL_SPACING   # first net column, right of the source
 
 
@@ -105,6 +113,10 @@ def _place(components: list[dict],
 
     placements: dict[str, tuple[int, int, str]] = {}
     occupied: set[tuple[int, int]] = set()
+    #: Occupied x-intervals per series row, so parallel branches (the
+    #: bridge's D1/D2) land on separate rows instead of on each other.
+    row_spans: dict[int, list[tuple[int, int]]] = {
+        y: [] for y in ROW_ANCHORS}
 
     def claim(x, y, step=(0, 160)):
         while (x, y) in occupied:
@@ -114,6 +126,19 @@ def _place(components: list[dict],
 
     def snap(x):
         return (x // 16) * 16
+
+    def claim_row(x, width=208):
+        """A series slot: the first row whose x-range is free, walking
+        right on the top row when every row is blocked."""
+        while True:
+            span = (x - 48, x - 48 + width)
+            for y in ROW_ANCHORS:
+                if all(span[1] <= s0 or s1 <= span[0]
+                       for s0, s1 in row_spans[y]):
+                    row_spans[y].append(span)
+                    occupied.add((x, y))
+                    return x, y
+            x += 96
 
     for comp in components:
         ref, ctype = comp["ref"], comp["type"]
@@ -131,20 +156,30 @@ def _place(components: list[dict],
                 rot = "R180" if gpin == top else "R0"
                 x, y = claim(net_x.get(other, NET_X0), SHUNT_Y,
                              step=(96, 0))
+                # Anchor so the TOP pin lands on one shared line whatever
+                # the rotation: R180 pins extend UP from the anchor, and
+                # unnormalized they collided with a row-2 transistor.
+                min_dy = min(rotate((p.dx, p.dy), rot)[1]
+                             for p in pins_of(ctype))
+                y = SHUNT_Y + 16 - min_dy
             else:
                 xa = net_x.get(n1, NET_X0)
                 xb = net_x.get(n2, NET_X0)
                 left_pin = p1 if xa <= xb else p2
                 # R270 rotates the R0-top pin onto the LEFT.
                 rot = "R270" if left_pin == top else "R90"
-                x, y = claim(snap((xa + xb) // 2), RAIL_Y)
+                x, y = claim_row(snap((xa + xb) // 2))
+                # Both rotations put their pins on the row's pin line
+                # (anchor - 16): R90 pins sit at anchor + 16, so drop
+                # the anchor to compensate.
+                if rot == "R90":
+                    y -= 32
         else:
-            # Three-terminal devices sit upright on the rail at the mean
-            # of their nets' columns; R0 keeps C up, B left, E down.
+            # Three-terminal devices sit upright at the mean of their
+            # nets' columns; R0 keeps C up, B left, E down.
             xs = [net_x[n] for n in nets_of.values() if n in net_x]
             rot = "R0"
-            x, y = claim(snap(sum(xs) // len(xs)) if xs else NET_X0,
-                         RAIL_Y)
+            x, y = claim_row(snap(sum(xs) // len(xs)) if xs else NET_X0)
         placements[ref] = (x, y, rot)
     return placements
 
@@ -271,8 +306,9 @@ def _stub_and_flag_lines(circuit, anchors) -> list[str]:
 
 
 #: Overhead and underfloor lanes a blocked net may climb to, tried in
-#: order after the pin line itself. All grid multiples of 16.
-LANES = (112, 80, 48, 368, 400, 432)
+#: order after the pin lines themselves. All grid multiples of 16;
+#: the underfloor lanes sit below the shunt parts' ground flags.
+LANES = (112, 80, 48, 576, 608, 640)
 
 
 def _body_boxes(types, pin_at):
@@ -299,8 +335,11 @@ def _route_net(points, foreign, committed, bodies, my_refs):
         x = next(iter(xs))
         candidates.append([((x, min(ys)), (x, max(ys)))])
     else:
-        pin_line = max(sorted(ys), key=[y for _, y in points].count)
-        for line_y in (pin_line, *LANES):
+        # Try the net's own pin lines first (most-shared first, upper
+        # first -- a net spanning both series rows has two), then lanes.
+        counts = [y for _, y in points]
+        pin_lines = sorted(set(ys), key=lambda y: (-counts.count(y), y))
+        for line_y in (*pin_lines, *LANES):
             segs = [((px, py), (px, line_y))
                     for px, py in points if py != line_y]
             lo, hi = min(xs), max(xs)

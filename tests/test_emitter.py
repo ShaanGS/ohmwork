@@ -258,6 +258,41 @@ def test_a_routed_net_carries_one_label_not_one_per_pin():
     assert names.count("nlx") == 1
 
 
+def test_component_bodies_never_overlap():
+    """The owner's screenshot: D1 and D2 drawn into each other, labels
+    colliding. Placement must keep every component's body region (its
+    pin hull, padded for the drawing and its labels) disjoint from every
+    other's."""
+    for circuit in (reference_circuit(), q3_circuit()):
+        symbols, _, _ = parse(emit(circuit).split("\r\n"))
+        boxes = []
+        for sym, anchor, rot in symbols:
+            pins = list(pin_positions(sym, anchor, rot).values())
+            xs = [p[0] for p in pins]
+            ys = [p[1] for p in pins]
+            boxes.append((min(xs) - 24, min(ys) - 24,
+                          max(xs) + 24, max(ys) + 24))
+        for i, a in enumerate(boxes):
+            for b in boxes[i + 1:]:
+                overlap = (a[0] < b[2] and b[0] < a[2]
+                           and a[1] < b[3] and b[1] < a[3])
+                assert not overlap, (i, a, b)
+
+
+def test_every_q3_net_routes_with_wires():
+    """The owner's screenshot again: vin2 fell back to scattered labels
+    and the bridge read as nonsense. On the placement built for it, every
+    non-ground net of the flagship circuit must actually wire: exactly
+    one label per net, not one per pin."""
+    circuit = q3_circuit()
+    _, _, flags = parse(emit(circuit).split("\r\n"))
+    names = list(flags.values())
+    for net in circuit["nets"]:
+        if net == "0":
+            continue
+        assert names.count(net) == 1, f"net {net} fell back to labels"
+
+
 def test_ground_pins_keep_their_own_ground_symbols():
     """Net 0 stays one flag per pin: LTspice renders each as the ground
     triangle, which is exactly how a hand drawing shows ground."""
