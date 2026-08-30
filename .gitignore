@@ -25,17 +25,17 @@ __pycache__/
 # Build artefacts from `pip install -e .`
 *.egg-info/
 
-# CLAUDE.md
-# AGENTS.md is the same document under the name Codex looks for. It is
-# ignored for the same reason: the working notes are private, and
-# ARCHITECTURE.md is the public account of what they contain.
-AGENTS.md is the WORKING FILE: session state, open questions, decisions in
+# CLAUDE.md is the WORKING FILE: session state, open questions, decisions in
 # progress, what to do next. It is not documentation and it is not the story
 # a reader of this repo wants. Its durable content -- the derived format
 # facts, the incident table, the verification limits -- lives in
 # ARCHITECTURE.md, which IS committed. Excluded from the FIRST commit rather
 # than removed later, because history is forever.
+# AGENTS.md is the same document under the name Codex looks for, ignored for
+# the same reason. (Its entry was once mangled into comment prose with no
+# leading '#': a pattern that matched nothing, so the file showed untracked.)
 CLAUDE.md
+AGENTS.md
 
 # The rendered site is GENERATED from library/. Committing it would put a
 # second copy of every published number in the repo, free to drift from the
@@ -54,6 +54,11 @@ web/dist/
 # build merely because it sits beside one.
 desktop/node_modules/
 desktop/dist/
+# The vendored evaluator bundle (the pinned Logisim JAR + jlink runtime).
+# ~130 MB of third-party binaries rebuilt reproducibly by
+# desktop/fetch-logisim.ps1 from the sha256 pins in logisim-bundle.json,
+# which IS committed. tests/test_desktop_bundle.py is its acceptance.
+desktop/vendor/
 desktop-backend/*
 !desktop-backend/.gitkeep
 .desktop-pyinstaller-build/

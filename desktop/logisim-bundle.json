@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "The single copy of every pin for the bundled evaluator. Read by",
+    "fetch-logisim.ps1, ensure-bundle.mjs and tests/test_desktop_bundle.py;",
+    "a second copy anywhere is the two-texts-drift failure.",
+    "jar_sha256 was measured 2026-08-30 from the GitHub v4.1.0 release",
+    "artifact itself (size matches the release listing, 53,251,383 bytes).",
+    "It is NOT byte-identical to the jar inside the winget msi (200 bytes",
+    "smaller, a separate CI rebuild of the same version), so byte identity",
+    "with the installed launcher is unavailable; the two are instead proven",
+    "to produce identical truth tables by tests/test_desktop_bundle.py.",
+    "modules were read from that image's runtime/release file -- the",
+    "vendor's own measured module set, not our guess.",
+    "Logisim Evolution is GPL-3.0; bundling it in the installer is",
+    "redistribution the license permits, with source at jar_url's repo."
+  ],
+  "jar_filename": "logisim-evolution-4.1.0-all.jar",
+  "jar_url": "https://github.com/logisim-evolution/logisim-evolution/releases/download/v4.1.0/logisim-evolution-4.1.0-all.jar",
+  "jar_sha256": "fe6386a3217a591bcc311a4eda49e1f43a389b499dd3d0f6f40f344fc85f2577",
+  "jdk_release": "jdk-21.0.12.1+1",
+  "jdk_url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip",
+  "jdk_sha256": "f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e",
+  "java_version": "21.0.12.1",
+  "modules": [
+    "java.base",
+    "java.compiler",
+    "java.datatransfer",
+    "java.xml",
+    "java.prefs",
+    "java.desktop",
+    "java.logging",
+    "java.security.sasl",
+    "java.naming",
+    "java.scripting",
+    "java.transaction.xa",
+    "java.sql"
+  ]
+}

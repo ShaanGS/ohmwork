@@ -84,6 +84,32 @@ function reserveLoopbackPort() {
   });
 }
 
+function bundledLogisimEnv() {
+  // The evaluator ships INSIDE the installer (fetch-logisim.ps1 builds it):
+  // the pinned 4.1.0 JAR plus a jlink'd Java 21 runtime. The backend already
+  // knows how to run a .jar through OHMWORK_JAVA — that path was built for
+  // the Linux container and is reused here unchanged.
+  const dir = app.isPackaged
+    ? path.join(process.resourcesPath, "logisim")
+    : path.join(here, "vendor", "logisim");
+  const jar = path.join(dir, "logisim-evolution-4.1.0-all.jar");
+  const java = path.join(dir, "runtime", "bin",
+    process.platform === "win32" ? "java.exe" : "java");
+  if (existsSync(jar) && existsSync(java)) {
+    return { OHMWORK_LOGISIM: jar, OHMWORK_JAVA: java };
+  }
+  if (app.isPackaged) {
+    // Fail closed, the way the server does without a password. Measured, not
+    // assumed: with no Logisim the backend falls back to an engine that
+    // raises on the first solve, so every question fails while the app looks
+    // installed — the exact failure ensure-bundle.mjs exists to prevent.
+    throw new Error("This build is missing its bundled Logisim evaluator, so "
+      + "no answer could be verified. Reinstall Ohmwork; if this build came "
+      + "from source, it was packaged without running desktop/fetch-logisim.ps1.");
+  }
+  return {};   // dev mode: fall back to a system-installed Logisim
+}
+
 function backendCommand() {
   if (app.isPackaged) {
     const executable = process.platform === "win32"
@@ -125,6 +151,11 @@ async function startBackend() {
       OHMWORK_SECURE_COOKIES: "0",
       OHMWORK_STATIC: resourcePath("web", "dist"),
       OHMWORK_LLM: "pool",
+      // After process.env deliberately: the bundled evaluator is the PINNED
+      // one (4.1.0, the version every published number was measured against),
+      // so an OHMWORK_LOGISIM inherited from a parent shell must not
+      // silently unpin a packaged app.
+      ...bundledLogisimEnv(),
       ...storedKeys,
       PYTHONUNBUFFERED: "1"
     },

@@ -9,9 +9,9 @@
   "type": "module",
   "scripts": {
     "dev": "electron .",
-    "package:win": "electron-builder --win nsis",
-    "package:mac": "electron-builder --mac dmg",
-    "package:dir": "electron-builder --dir"
+    "package:win": "node ensure-bundle.mjs && electron-builder --win nsis",
+    "package:mac": "node ensure-bundle.mjs && electron-builder --mac dmg",
+    "package:dir": "node ensure-bundle.mjs && electron-builder --dir"
   },
   "build": {
     "appId": "edu.srm.ohmwork",
@@ -19,7 +19,8 @@
     "files": ["main.mjs", "preload.cjs"],
     "extraResources": [
       {"from": "../web/dist", "to": "web/dist"},
-      {"from": "../desktop-backend", "to": "backend", "filter": ["**/*"]}
+      {"from": "../desktop-backend", "to": "backend", "filter": ["**/*"]},
+      {"from": "vendor/logisim", "to": "logisim", "filter": ["**/*"]}
     ],
     "win": {"target": "nsis"},
     "mac": {"target": "dmg", "category": "public.app-category.education"}

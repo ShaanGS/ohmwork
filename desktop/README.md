@@ -56,37 +56,49 @@ Windows/macOS and are not placed in `.env`.
 The development shell starts `python -m ohmwork.server`. Set `OHMWORK_PYTHON`
 if `python` is not the interpreter that has Ohmwork's dependencies.
 
+## The bundled evaluator (PRD gap 1 — landed 2026-08-30, Windows)
+
+The installer ships Logisim Evolution inside it, because an installed app
+that cannot verify anything is the failure this project exists to prevent
+(measured, not assumed: with no Logisim, `best_available_backend()` falls
+back to an engine that raises on the first solve — every question fails and
+the app looks installed).
+
+How it is built, and what each piece proves:
+
+- `logisim-bundle.json` is the **single copy of every pin**: the 4.1.0
+  release JAR's sha256 (measured from the GitHub artifact), the Temurin
+  JDK 21 used at build time, and the 12-module list read from the vendor's
+  own jpackage image — their measured answer to "which modules does Logisim
+  need", not our guess.
+- `fetch-logisim.ps1` downloads both with hash verification, runs `jlink`,
+  and refuses to report success until the bundle has **evaluated a real
+  circuit** (`exp8_gates.circ`, a student's hand-drawn file). Existence is
+  never the acceptance. Output lands in `desktop/vendor/logisim/`
+  (gitignored, 97.7 MB measured, rebuilt reproducibly from the pins).
+- `ensure-bundle.mjs` runs before every `electron-builder` invocation and
+  fails the build loudly if any installer ingredient is missing — bundle,
+  built page, or PyInstaller backend.
+- `main.mjs` points `OHMWORK_LOGISIM` at the bundled JAR and `OHMWORK_JAVA`
+  at the bundled runtime (the `.jar`-through-java path the backend already
+  supports for the Linux container). A **packaged** app missing its bundle
+  refuses to start, the way the server refuses to start without a password.
+  Dev mode falls back to a system-installed Logisim.
+- `tests/test_desktop_bundle.py` is the acceptance: hash identity with the
+  pin, Java 21 in the runtime's own `release` file, 32 correct rows on the
+  hand-drawn fixture through the app's own backend class, and row-for-row
+  agreement with the installed jpackage launcher when both exist.
+
+One finding worth keeping: the release JAR and the jar inside the winget msi
+are the **same version but not the same bytes** (200 bytes apart — separate
+CI rebuilds). Byte identity with the installed launcher is therefore
+unavailable, and behavioural agreement on a real file is the check that
+replaces it.
+
+macOS is not covered yet: its bundle must be built on a Mac (as must the
+PyInstaller backend), with the Temurin mac-aarch64 JDK added to the spec.
+
 ## Release work still required
-
-### 1. The evaluator is not in the installer, and without it nothing verifies
-
-**This is the release blocker, and it is bigger than the packaging one.** The
-installer ships the Python backend and the page. It does not ship **Logisim
-Evolution or a JRE**, and Logisim is the entire reason an answer here is worth
-anything: it is the outside tool that checks the emitted file.
-
-What happens on a machine that does not already have it, measured rather than
-assumed: `locate_logisim()` finds nothing, `best_available_backend()` falls
-back to `InternalLogicBackend`, and its `truth_table` raises
-`NotImplementedError` on the first solve. Every question fails. The app looks
-installed and works for nothing.
-
-Three honest ways out, none of them chosen here:
-
-- **Bundle it.** The jar is ~50 MB and needs Java 21; a `jlink` runtime with
-  only the modules Logisim uses is ~40 MB. Biggest installer, zero
-  instructions, and the version stays PINNED — which matters, because every
-  published number in this project was measured against 4.1.0.
-- **Require it, and check at startup.** Refuse to start with a message naming
-  the download, the way the server refuses to start without a password. Small
-  installer, one instruction, fails closed and loudly.
-- **Ship it broken with a warning.** Not acceptable: this project's whole
-  claim is that an outside tool checked the answer, and an app that silently
-  cannot check anything is the failure it exists to prevent.
-
-Until one of those lands, the desktop app is a **development-mode tool for a
-machine that already has Logisim installed**, which is exactly what the
-"Running it from this clone" section above describes.
 
 ### 2. A platform-native backend executable
 
