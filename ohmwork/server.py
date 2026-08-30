@@ -157,6 +157,55 @@ def sse(name: str, data) -> str:
     return f"event: {name}\ndata: {scrub(json.dumps(data))}\n\n"
 
 
+def system_status() -> dict:
+    """What a first run needs to know, before the first question is typed.
+
+    Three facts, each of which otherwise surfaces as a confusing failure at
+    solve time: is there a model key, is the digital evaluator external, and
+    is LTspice on this machine. Names only, never values -- a key's NAME
+    saying it is configured is first-run guidance; its value in a response is
+    the leak this server is built to prevent. Paths are likewise kept out:
+    found/not-found is the fact a student needs, and a server path in a
+    browser is nobody's business.
+    """
+    from ohmwork.llm import POOL_ORDER, SIGNUP_URL, env_var_for
+
+    providers = [name for name in POOL_ORDER
+                 if os.environ.get(env_var_for(name))]
+
+    from ohmwork.logisim_backend import locate_logisim
+    try:
+        locate_logisim()
+        digital = {"available": True, "verification": "external",
+                   "detail": "Logisim Evolution found; every digital answer "
+                             "is checked by it"}
+    except FileNotFoundError:
+        digital = {"available": True, "verification": "internal",
+                   "detail": "Logisim Evolution was NOT found. Digital "
+                             "answers would fall back to ohmwork's own "
+                             "evaluator, which cannot be externally checked."}
+
+    from ohmwork.simulate import locate_ltspice
+    try:
+        locate_ltspice()
+        analog = {"available": True,
+                  "detail": "LTspice found; analog questions are answered "
+                            "and measured by it"}
+    except FileNotFoundError:
+        analog = {"available": False,
+                  "detail": f"LTspice was not found on this machine, so an "
+                            f"analog question will be refused rather than "
+                            f"answered unverified. Install it (free) from "
+                            f"{LTSPICE_DOWNLOAD}"}
+
+    return {
+        "providers": providers,
+        "signup": dict(SIGNUP_URL),
+        "digital": digital,
+        "analog": analog,
+    }
+
+
 def _default_solver(question, *, workdir, progress=None):
     """The real thing. Imported lazily so tests never touch the model layer."""
     from ohmwork.design import solve
@@ -237,6 +286,19 @@ def create_app(*, solver=None, analog_solver=None,
     @app.get("/api/session")
     async def session(ohmwork_session: str | None = Cookie(default=None)):
         return {"authorised": authorised(ohmwork_session)}
+
+    @app.get("/api/status")
+    async def status(ohmwork_session: str | None = Cookie(default=None)):
+        """First-run guidance: which keys, which evaluators. Authorised only
+        -- it names the owner's configured providers, and the health route
+        below exists precisely so the anonymous probe learns nothing."""
+        if not authorised(ohmwork_session):
+            raise HTTPException(401, "log in first")
+        # Resolved at call time through the module so a test can stand in for
+        # the probes; this machine has both simulators and a test cannot
+        # uninstall them.
+        import ohmwork.server as _self
+        return _self.system_status()
 
     @app.get("/api/health")
     async def health():

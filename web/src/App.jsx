@@ -141,7 +141,15 @@ function Solver({ onExpired }) {
   const [unavailable, setUnavailable] = useState(null)
   const [error, setError] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [status, setStatus] = useState(null)
   const bottom = useRef(null)
+
+  useEffect(() => {
+    fetch('/api/status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setStatus)
+      .catch(() => setStatus(null))
+  }, [])
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -225,7 +233,9 @@ function Solver({ onExpired }) {
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
           {showSettings && desktop && <DesktopSettings desktop={desktop} onDone={() => setShowSettings(false)} />}
-          {!asked && <Intro onPick={setQuestion} />}
+          {!asked && <Intro onPick={setQuestion} status={status}
+                            desktop={desktop}
+                            onOpenSettings={() => setShowSettings(true)} />}
 
           {asked && <Asked text={asked} />}
           {routing && <Routing routing={routing} />}
@@ -331,9 +341,86 @@ function DesktopSettings({ desktop, onDone }) {
   )
 }
 
-function Intro({ onPick }) {
+function FirstRun({ status, desktop, onOpenSettings }) {
+  // PRD gap 3: say what is missing PLAINLY, on the screen where it matters,
+  // once -- before the first question, not as a confusing failure after it.
+  // When nothing is missing, one muted line says what was found, because a
+  // quiet screen is indistinguishable from an unexamined one.
+  if (!status) return null
+  const noKey = status.providers.length === 0
+  const noLtspice = !status.analog.available
+  const internalOnly = status.digital.verification === 'internal'
+
+  if (!noKey && !noLtspice && !internalOnly) {
+    return (
+      <p className="mb-4 text-xs text-muted-foreground animate-in fade-in">
+        ready — {status.digital.detail.split(';')[0].toLowerCase()} ·{' '}
+        {status.analog.detail.split(';')[0].toLowerCase()} · keys:{' '}
+        {status.providers.join(', ')}
+      </p>
+    )
+  }
+  return (
+    <div className="mb-6 space-y-3">
+      {noKey && (
+        <Card className="border-caution/40 bg-caution/5 animate-in fade-in">
+          <CardContent className="space-y-2">
+            <p className="flex items-center gap-2 text-sm text-caution">
+              <KeyRound className="size-4" />
+              no model key is configured, so nothing can be designed yet
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {desktop ? (
+                <>Click the key icon in the top-right corner and paste a free
+                provider key.{' '}</>
+              ) : (
+                <>Set a provider key in the server&apos;s environment.{' '}</>
+              )}
+              Free keys:{' '}
+              {Object.entries(status.signup).map(([name, url], index) => (
+                <span key={name}>
+                  {index > 0 && ' · '}
+                  <a href={url} target="_blank" rel="noreferrer"
+                     className="underline">{name}</a>
+                </span>
+              ))}
+            </p>
+            {desktop && (
+              <Button size="sm" variant="outline" onClick={onOpenSettings}>
+                <KeyRound /> add a key
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      {noLtspice && (
+        <p className="text-xs leading-relaxed text-muted-foreground animate-in fade-in">
+          {status.analog.detail.split('https://')[0]}
+          <a className="underline"
+             href={`https://${status.analog.detail.split('https://')[1] || ''}`}
+             target="_blank" rel="noreferrer">
+            download LTspice
+          </a>
+        </p>
+      )}
+      {internalOnly && (
+        <Card className="border-caution/40 bg-caution/5 animate-in fade-in">
+          <CardContent>
+            <p className="text-xs leading-relaxed text-caution">
+              {status.digital.detail}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+function Intro({ onPick, status, desktop, onOpenSettings }) {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <FirstRun status={status} desktop={desktop}
+                onOpenSettings={onOpenSettings} />
       <h1 className="text-2xl font-medium tracking-tight">
         Ask an electronics lab question.
       </h1>

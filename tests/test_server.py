@@ -546,6 +546,107 @@ def test_a_question_longer_than_the_limit_is_refused():
     assert response.status_code == 400
 
 
+# -------------------------------------------------------- first-run status
+#
+# PRD gap 3: no LTspice, or no key, otherwise surfaces as a confusing
+# failure at solve time. /api/status says so plainly, before the first
+# question -- names only, never values, never paths.
+
+
+def _clear_provider_keys(monkeypatch):
+    from ohmwork.llm import POOL_ORDER, env_var_for
+
+    for name in POOL_ORDER:
+        monkeypatch.delenv(env_var_for(name), raising=False)
+
+
+def test_the_status_route_requires_a_session():
+    """It names the owner's configured providers; an anonymous probe gets
+    the health route, which says nothing."""
+    client = make_client()
+    assert client.get("/api/status").status_code == 401
+
+
+def test_status_names_configured_providers_and_NEVER_their_values(monkeypatch):
+    _clear_provider_keys(monkeypatch)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_a_real_looking_secret")
+
+    client = make_client()
+    login(client)
+    response = client.get("/api/status")
+    body = response.json()
+
+    assert body["providers"] == ["groq"]
+    assert "gsk_a_real_looking_secret" not in response.text
+
+
+def test_status_with_no_key_says_so_and_names_where_to_get_one(monkeypatch):
+    _clear_provider_keys(monkeypatch)
+
+    client = make_client()
+    login(client)
+    body = client.get("/api/status").json()
+
+    assert body["providers"] == []
+    # The page needs somewhere to send a person, not just a diagnosis.
+    assert body["signup"]["groq"].startswith("https://")
+
+
+def test_status_reports_missing_ltspice_with_the_download_named(monkeypatch):
+    import ohmwork.simulate as simulate
+
+    def not_found():
+        raise FileNotFoundError("LTspice not found")
+
+    monkeypatch.setattr(simulate, "locate_ltspice", not_found)
+    client = make_client()
+    login(client)
+    body = client.get("/api/status").json()
+
+    assert body["analog"]["available"] is False
+    assert "analog.com" in body["analog"]["detail"]
+    assert "refused" in body["analog"]["detail"]
+
+
+def test_status_reports_an_internal_only_digital_evaluator(monkeypatch):
+    """Both directions of the probe, so the check reads as a discrimination
+    rather than one that happens never to fire on this machine."""
+    import ohmwork.logisim_backend as logisim_backend
+
+    def not_found():
+        raise FileNotFoundError("no logisim")
+
+    monkeypatch.setattr(logisim_backend, "locate_logisim", not_found)
+    client = make_client()
+    login(client)
+    body = client.get("/api/status").json()
+
+    assert body["digital"]["verification"] == "internal"
+    assert "NOT found" in body["digital"]["detail"]
+
+
+def test_status_reports_present_evaluators_without_leaking_paths(monkeypatch):
+    import ohmwork.logisim_backend as logisim_backend
+    import ohmwork.simulate as simulate
+    from pathlib import Path
+
+    monkeypatch.setattr(simulate, "locate_ltspice",
+                        lambda: Path("F:/secret-drive/LTspice.exe"))
+    monkeypatch.setattr(logisim_backend, "locate_logisim",
+                        lambda: Path("C:/somewhere/logisim.exe"))
+    client = make_client()
+    login(client)
+    response = client.get("/api/status")
+    body = response.json()
+
+    assert body["analog"]["available"] is True
+    assert body["digital"]["verification"] == "external"
+    # Found/not-found is the fact a student needs; a server path in a
+    # browser is nobody's business.
+    assert "secret-drive" not in response.text
+    assert "somewhere" not in response.text
+
+
 # ------------------------------------------------------------- the download
 
 
