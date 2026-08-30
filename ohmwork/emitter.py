@@ -224,11 +224,33 @@ def _net_columns(components, comp_pins) -> dict[str, int]:
 # ----------------------------------------------------------------- emission
 
 
+#: Per-rotation label windows for two-terminal parts, so a rotated body
+#: keeps HORIZONTAL, non-colliding text. Format derived from the
+#: hand-drawn fixtures (the R180 pair is verbatim a student's zener):
+#: WINDOW <0=InstName|3=Value> <dx> <dy> <justify> <size>, offsets from
+#: the anchor in the file's frame, "Left" meaning horizontal text.
+LABEL_WINDOWS = {
+    "R270": ("WINDOW 0 16 -64 Left 2", "WINDOW 3 16 0 Left 2"),
+    "R90": ("WINDOW 0 -96 -48 Left 2", "WINDOW 3 -96 16 Left 2"),
+    "R180": ("WINDOW 0 24 64 Left 2", "WINDOW 3 24 0 Left 2"),
+}
+
+#: What the students' own files carry on every voltage source: two
+#: hidden attribute windows, so no extra text crowds the symbol.
+VOLTAGE_WINDOWS = ("WINDOW 123 0 0 Left 0", "WINDOW 39 0 0 Left 0")
+
+_TWO_TERMINAL = {"res", "cap", "ind", "diode", "zener"}
+
+
 def _symbol_lines(components, anchors) -> list[str]:
     lines = []
     for comp in components:
         x, y, rot = anchors[comp["ref"]]
         lines.append(f"SYMBOL {comp['type']} {x} {y} {rot}")
+        if comp["type"] == "voltage":
+            lines.extend(VOLTAGE_WINDOWS)
+        elif comp["type"] in _TWO_TERMINAL and rot in LABEL_WINDOWS:
+            lines.extend(LABEL_WINDOWS[rot])
         lines.append(f"SYMATTR InstName {comp['ref']}")
         # The .asc format has one attribute slot for both scalar values
         # and part names; validation guarantees exactly one is set.
@@ -293,22 +315,85 @@ def _stub_and_flag_lines(circuit, anchors) -> list[str]:
         committed.extend(route)
         for (ax, ay), (bx, by) in route:
             wires.append(f"WIRE {ax} {ay} {bx} {by}")
-        lx, ly = min(p for seg in route for p in seg)
-        flags.append(f"FLAG {lx} {ly} {net}")
+        taken = [tuple(map(int, f.split()[1:3])) for f in flags]
+        fx, fy = _flag_spot(route, bodies.values(), taken)
+        flags.append(f"FLAG {fx} {fy} {net}")
 
-    for e in circuit["nets"].get("0", ()):
-        fx, fy = stub_end[e]
-        flags.append(f"FLAG {fx} {fy} 0")
+    # THE CLOSED LOOP. A hand drawing returns every current to a ground
+    # rail along the bottom; parts dangling over unconnected triangles
+    # read as parts on strings, which is what the owner rejected. So
+    # ground ROUTES: a drop from every grounded pin onto one bottom rail,
+    # with a ground flag (the triangle) at each drop.
+    ground = circuit["nets"].get("0", ())
+    g_points = sorted({stub_end[e] for e in ground})
+    g_refs = {owner[e] for e in ground}
+    g_foreign = [p for e, p in pin_at.items() if e not in ground]
+    g_foreign += [p for e, p in stub_end.items() if e not in ground]
+    rail = _ground_rail(g_points, g_foreign, committed, bodies, g_refs)
+    if rail is None:
+        for e in ground:
+            fx, fy = stub_end[e]
+            flags.append(f"FLAG {fx} {fy} 0")
+    else:
+        for (ax, ay), (bx, by) in rail:
+            wires.append(f"WIRE {ax} {ay} {bx} {by}")
+        for px, _ in g_points:
+            flags.append(f"FLAG {px} {GND_Y} 0")
     return wires + flags
 
 
 # ------------------------------------------------------------------ routing
 
 
-#: Overhead and underfloor lanes a blocked net may climb to, tried in
-#: order after the pin lines themselves. All grid multiples of 16;
-#: the underfloor lanes sit below the shunt parts' ground flags.
-LANES = (112, 80, 48, 576, 608, 640)
+#: Overhead lanes a blocked net may climb to, tried in order after the
+#: pin lines themselves. All grid multiples of 16. No underfloor lanes:
+#: the ground rail owns the bottom of the sheet, and a lane below it
+#: would have to cross it to reach anything.
+LANES = (112, 80, 48)
+
+#: The ground rail's y: below every shunt part's bottom stub.
+GND_Y = 560
+
+
+def _ground_rail(points, foreign, committed, bodies, my_refs):
+    """A drop from every ground stub end onto one bottom rail, or None."""
+    if not points:
+        return None
+    segs = [((px, py), (px, GND_Y)) for px, py in points if py != GND_Y]
+    xs = [px for px, _ in points]
+    if min(xs) != max(xs):
+        segs.append(((min(xs), GND_Y), (max(xs), GND_Y)))
+    obstacles = [box for ref, box in bodies.items() if ref not in my_refs]
+    if all(_clear(seg, foreign, committed, obstacles) for seg in segs):
+        return segs
+    return None
+
+
+def _flag_spot(route, boxes, taken):
+    """Where the net's one name label goes: the point on the route's
+    horizontal wires farthest from every body (and every existing label),
+    so the name never sits on a component's own text. The owner's
+    screenshots showed 'vrect' printed through a diode's '1N4007'."""
+    best, best_score = None, None
+    for (ax, ay), (bx, by) in route:
+        if ay != by:
+            continue
+        for x in range(min(ax, bx), max(ax, bx) + 1, 16):
+            score = min([_box_gap((x, ay), box) for box in boxes]
+                        + [abs(x - tx) + abs(ay - ty) for tx, ty in taken]
+                        or [10 ** 6])
+            if best_score is None or score > best_score:
+                best, best_score = (x, ay), score
+    if best is None:
+        best = min(p for seg in route for p in seg)
+    return best
+
+
+def _box_gap(p, box) -> int:
+    (px, py), (x0, y0, x1, y1) = p, box
+    dx = max(x0 - px, 0, px - x1)
+    dy = max(y0 - py, 0, py - y1)
+    return dx + dy
 
 
 def _body_boxes(types, pin_at):
