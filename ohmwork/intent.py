@@ -438,6 +438,24 @@ def parse_intent_reply(text) -> Intent:
             "five discarded -- and an invented window either misses the "
             "steady state or takes minutes to run.")
 
+    # An AC-fed circuit has no meaningful DC operating point: the AC source
+    # is ZERO there, so a dc_voltage/dc_current target measures a silent 0
+    # that NO correct circuit can bring to the stated figure. MEASURED on a
+    # live claude-opus-5 Q3 run: two sound rectifier designs failed a
+    # dc_voltage 6.2 V check at 0 V, and the loop's feedback was advice
+    # about a run that means nothing.
+    if frequency:
+        dc_kinds = [t.name for t in targets
+                    if t.kind in ("dc_voltage", "dc_current")]
+        if dc_kinds:
+            raise IntentError(
+                f"{', '.join(dc_kinds)}: a dc_voltage/dc_current target is "
+                f"measured at the DC operating point, where an AC source is "
+                f"ZERO -- in this AC-fed circuit (frequency is set) no "
+                f"correct design can pass it. A DC output figure here is "
+                f"the MEAN of the settled waveform: use kind 'ac_mean' (or "
+                f"'current_waveform' for a current).")
+
     stated = tuple(data.get("stated_values") or ())
     for index, item in enumerate(stated):
         if not isinstance(item, dict) or "what" not in item or "value" not in item:

@@ -85,6 +85,34 @@ REGULATOR_CIRCUIT = {
 }
 
 
+def test_a_dc_target_in_an_ac_fed_circuit_is_refused_naming_ac_mean():
+    """MEASURED on the second paid Q3 run (claude-opus-5): the intent put
+    the 6.2 V check on a dc_voltage target, which is measured at the DC
+    operating point -- where an AC source is ZERO. Two sound designs
+    measured 0 V against a check no correct rectifier circuit can pass,
+    and the loop's feedback ("reduce the series resistance") was advice
+    about a run that means nothing. In an AC-fed circuit a DC output
+    figure is the MEAN of the settled waveform: ac_mean.
+    """
+    data = json.loads(REGULATOR)
+    data["frequency"] = 50
+    data["targets"].append(
+        {"name": "vin_wave", "kind": "waveform", "net": "vin",
+         "quantity": "input waveform", "unit": "V"})
+    with pytest.raises(IntentError) as caught:
+        parse_intent_reply(data)
+    message = str(caught.value)
+    assert "vout_nominal" in message
+    assert "ac_mean" in message
+    assert "ZERO" in message
+
+
+def test_a_dc_target_with_no_ac_source_is_still_welcome():
+    """The 9 V regulator has a DC supply and its dc_voltage target is the
+    right one. The refusal must key on the AC-fed fact, not on the kind."""
+    parse_intent_reply(json.loads(REGULATOR))
+
+
 # ------------------------------------------------------------ parsing
 
 def test_an_intent_reply_is_parsed():

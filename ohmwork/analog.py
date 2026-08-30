@@ -104,6 +104,10 @@ RULES:
    "tolerance_pct" must be greater than 0 and at most {max_tolerance:g}.
    Wider than that and any plausible circuit satisfies it, so the check
    cannot fail.
+   In an AC-FED circuit (a rectifier, anything with a source frequency) a
+   stated DC output figure is the MEAN of the settled waveform: use kind
+   "ac_mean", NEVER "dc_voltage" -- at the DC operating point an AC source
+   is zero, so a dc_voltage target there reads 0 V from a correct circuit.
 
 3. WHERE it is measured. A VOLTAGE target names the node(s) in "net" (and
    "net2" for a voltage measured BETWEEN two nodes, such as a floating
