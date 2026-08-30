@@ -395,8 +395,18 @@ def _attempt(circuit, question, intent, provider_name, model, backend,
     return data, asc_path, experiment, comparison, basis, question_object
 
 
+#: More room than the digital loop's DEFAULT_ATTEMPTS, from measurement:
+#: three Q3 runs on 2026-08-30 (two vendors) each spent all 4 attempts on
+#: DISTINCT real rejections -- the repeated-failure stop never fired, so the
+#: loop was still converging when the budget ran out. An analog design has
+#: more independent ways to be wrong than a gate network (wiring, values,
+#: operating point), and each attempt is bounded by the simulator timeout,
+#: so the extra room costs minutes, not runaway.
+ANALOG_ATTEMPTS = 6
+
+
 def solve_analog(question: str, *, provider=None, backend=None, workdir,
-                 executor=None, attempts: int = DEFAULT_ATTEMPTS,
+                 executor=None, attempts: int = ANALOG_ATTEMPTS,
                  progress=None) -> AnalogSolution:
     """Design an analog circuit for `question` and check it against its intent.
 

@@ -718,3 +718,48 @@ def test_dropout_sweep_fires_the_regime_check(tmp_path):
     assert not results["vout_fullload"].reliable
     assert not results["load_reg_pct"].reliable
     assert any("D1" in w for w in results["load_reg_pct"].warnings)
+
+
+# ----------------------------------- regime failures that diagnose (Q3)
+
+# Three Q3 runs on 2026-08-30, two vendors, all died the same way: a zener
+# out of breakdown, reported as a fact with no hint of WHY -- and the text
+# is fed straight back to a design loop that then guessed. Incident 22 set
+# the pattern: the message must carry what the loop can act on, and the
+# traces already hold the diagnosis. A backwards zener and a starved one
+# read completely differently in the data and need opposite fixes.
+
+def _zener_regime_reasons(vb_trace, id1_trace, vz=8.3):
+    from ohmwork.simulate import Results
+
+    entry = {"kind": "regime", "run": "waves",
+             "assert": "zener_in_breakdown", "device": "D1", "vz": vz}
+    run = {"id": "waves", "type": "tran", "stop": "200m", "settle": "100m"}
+    results = Results(
+        traces={"time": [0.0, 1.0, 2.0, 3.0],
+                "V(vb)": vb_trace, "I(D1)": id1_trace},
+        raw_path="x", log_path="x")
+    return analysis._check_regime(reference_circuit(), entry, run, results)
+
+
+def test_a_backwards_zener_is_diagnosed_as_backwards():
+    # Cathode (vb) below the anode (ground): forward-biased, i.e. the model
+    # wired it the wrong way round. The fix is orientation, not resistance.
+    reasons = " ".join(_zener_regime_reasons([-0.7] * 4, [0.02] * 4))
+    assert "out of breakdown" in reasons
+    assert "backwards" in reasons
+    assert "cathode" in reasons
+
+
+def test_a_starved_zener_is_diagnosed_as_underdriven():
+    # Right way round, but the node feeding it never gets near Vz: the fix
+    # is more drive, not orientation -- and the message must not say
+    # "backwards", or it sends the model to fix the wrong thing.
+    reasons = " ".join(_zener_regime_reasons([3.0] * 4, [-1e-6] * 4))
+    assert "out of breakdown" in reasons
+    assert "never reaches" in reasons
+    assert "backwards" not in reasons
+
+
+def test_a_healthy_zener_gets_no_diagnosis():
+    assert _zener_regime_reasons([8.3] * 4, [-0.004] * 4) == []

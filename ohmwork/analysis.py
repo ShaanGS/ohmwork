@@ -725,6 +725,30 @@ def _check_regime(circuit, entry, run, results) -> list[str]:
                 f"{dev} out of breakdown at {starved} of {n} sweep points "
                 f"(reverse current below {min_rev:g} A)"
             )
+            # This text is fed back to a design loop, so it carries the
+            # DIAGNOSIS, not just the fact -- incident 22's lesson, and the
+            # traces already hold it. Three Q3 runs died on this line with
+            # the loop left to guess between two opposite fixes: a
+            # backwards zener needs its orientation flipped; a starved one
+            # needs more drive. The sign of the cathode-anode voltage
+            # tells them apart.
+            vk = _net_wave(results, nets["cathode"], run["id"], n)
+            va = _net_wave(results, nets["anode"], run["id"], n)
+            mean_v = sum(k - a for k, a in zip(vk, va)) / n
+            if mean_v < 0:
+                reasons.append(
+                    f"{dev}'s cathode sits BELOW its anode on average "
+                    f"({mean_v:.3g} V), so it is conducting forwards: the "
+                    f"zener is oriented backwards -- its cathode must face "
+                    f"the positive rail"
+                )
+            elif "vz" in entry and mean_v < 0.8 * entry["vz"]:
+                reasons.append(
+                    f"the voltage across {dev} averages {mean_v:.3g} V and "
+                    f"never reaches Vz={entry['vz']} V: too little drive -- "
+                    f"reduce the series resistance feeding it, or feed it "
+                    f"from a higher node"
+                )
         if "vz" in entry:
             vz = entry["vz"]
             vk = _net_wave(results, nets["cathode"], run["id"], n)

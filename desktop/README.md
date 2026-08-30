@@ -100,13 +100,24 @@ PyInstaller backend), with the Temurin mac-aarch64 JDK added to the spec.
 
 ## Release work still required
 
-### 2. A platform-native backend executable
+### 2. A platform-native backend executable — DONE for Windows 2026-08-30
 
-An installer must package the Python backend as a platform-native executable.
-That is intentionally not faked here: a Windows executable cannot make a Mac
-app, and macOS must be built and tested on macOS. The required next step is a
-PyInstaller build on each target platform, copied into `desktop-backend/` for
-Electron Builder's `extraResources` section.
+`build-backend.ps1` produces `desktop-backend/ohmwork-server.exe` (onefile
+PyInstaller, ~80 MB), and it is PROVEN, not just built: it refuses to start
+without `OHMWORK_PASSWORD`, serves the API with one, and has run real
+solves end to end in a browser — digital (priority encoder, and the 7447
+against its probed behaviour) and analog (spicelib and the LTspice spawn
+work inside the frozen bundle, which nothing else had tested). The script
+checks that the executable exists rather than announcing success: it once
+printed its success line over a PyInstaller run that had died and left
+nothing.
+
+Two facts a rebuild needs: stop any running `ohmwork-server.exe` first (a
+running image cannot be replaced and even locks electron-builder's rmdir of
+an old `dist/`), and OneDrive can hold a transient lock on the fresh exe —
+retry the `dist` removal rather than diagnosing a phantom process.
+
+macOS still requires a Mac: a Windows executable cannot make a Mac app.
 
 ### 3. Signing
 
