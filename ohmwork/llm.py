@@ -440,7 +440,12 @@ DEFAULT_MODEL.update({
     # the free tier. The -latest alias carries its own, larger quota.
     "gemini": "gemini-flash-latest",
     "openrouter": "z-ai/glm-5.2:free",
-    "mistral": "mistral-large-latest",
+    # mistral-large-latest ROTTED on 2026-08-30: the free tier now answers
+    # HTTP 403 tier_not_allowed for it, so a pool with that default silently
+    # loses its mistral member on every solve. mistral-medium-latest carried
+    # a full Q3 design run the same day. The id an account can afford is as
+    # perishable as the id itself -- `--list-models` remains the check.
+    "mistral": "mistral-medium-latest",
 })
 
 # Vision is a SEPARATE default and a separate question. A free Groq account

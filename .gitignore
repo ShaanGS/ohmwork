@@ -64,6 +64,7 @@ desktop-backend/*
 .desktop-pyinstaller-build/
 .desktop-pyinstaller-spec/
 
-# Scratch output from local --solve runs.
-.scratch_*/
-.scratch_*.log
+# Scratch output from local --solve runs: directories, logs, question-text
+# files, driver scripts -- anything scratch. The old dir-and-log-only pair
+# let bare .scratch_* files reach the staging area twice in one day.
+.scratch_*
