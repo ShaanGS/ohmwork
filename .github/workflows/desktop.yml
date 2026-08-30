@@ -1,5 +1,16 @@
 name: desktop
 
+# Builds the Windows installer on a machine that is not the developer's --
+# the closest CI gets to the PRD's foreign-machine test. The artifact it
+# uploads is deliberately UNSIGNED and is NOT the release asset (that is
+# built and uploaded locally); this run proves a clean checkout can
+# produce one at all.
+#
+# There is intentionally NO macOS job: the Logisim bundle spec carries no
+# mac JDK, no baseline in this project has ever been measured on macOS,
+# and a job that fails on every release is an email that means nothing.
+# Adding macOS starts with desktop/logisim-bundle.json, on a real Mac.
+
 on:
   workflow_dispatch:
   release:
@@ -7,19 +18,7 @@ on:
 
 jobs:
   package:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            command: npm run package:win
-            artifact: Ohmwork-Windows
-            path: desktop/dist/*.exe
-          - os: macos-latest
-            command: npm run package:mac
-            artifact: Ohmwork-macOS
-            path: desktop/dist/*.dmg
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,6 +31,14 @@ jobs:
           cache-dependency-path: |
             web/package-lock.json
             desktop/package-lock.json
+
+      - name: Fetch the pinned Logisim bundle
+        shell: pwsh
+        # Downloads the 4.1.0 release JAR and a Temurin 21 JDK against the
+        # sha256 pins in desktop/logisim-bundle.json, jlinks the runtime,
+        # and refuses to report success until the bundle EVALUATES a real
+        # student-drawn circuit.
+        run: ./desktop/fetch-logisim.ps1
 
       - name: Build the verified Python backend for this operating system
         shell: pwsh
@@ -54,10 +61,10 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
           npm ci
-          ${{ matrix.command }}
+          npm run package:win
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.path }}
+          name: Ohmwork-Windows
+          path: desktop/dist/*.exe
           if-no-files-found: error
