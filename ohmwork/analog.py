@@ -184,7 +184,22 @@ RULES:
    "rationale" of one sentence saying why that number. A chosen value that
    looks like a given one submits your judgement as the student's own.
 
-9. No JSON outside the object. No markdown fences, no explanation.
+9. A BRIDGE RECTIFIER is four diodes and a FLOATING AC source: V1 sits
+   between two nodes and NEITHER is ground. Grounding an AC terminal shorts
+   half the bridge. The working pattern, exactly:
+     "ac1":   ["V1.+", "D1.anode", "D3.cathode"]
+     "ac2":   ["V1.-", "D2.anode", "D4.cathode"]
+     "vrect": ["D1.cathode", "D2.cathode", ...]
+     "0":     ["D3.anode", "D4.anode", ...]
+
+10. A SHUNT ZENER regulates only while current flows through it, so SIZE
+    the series resistor feeding it: with Iload = Vz / RL,
+      Rs = (Vsupply_dc - Vz) / (Iload + 0.005)
+    Example: 15 V feeding a 6.8 V zener into a 1k load -> Iload is 6.8 mA,
+    Rs = (15 - 6.8) / 0.0118, about 680 ohms. An Rs of several kilohms
+    STARVES the zener: it never enters breakdown and regulates nothing.
+
+11. No JSON outside the object. No markdown fences, no explanation.
 
 SHAPE, exactly:
 

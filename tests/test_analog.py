@@ -203,6 +203,23 @@ def test_the_plan_is_DERIVED_and_never_asked_for(tmp_path):
         assert word not in design_prompt
 
 
+def test_the_design_prompt_teaches_the_two_measured_killers(tmp_path):
+    """Seven Q3 runs across two vendors (gpt-oss and mistral, 2026-08-30)
+    failed the same two ways: a bridge with a grounded AC terminal (vrect
+    averaging 3 V instead of ~14) and a zener starved by an oversized
+    series resistor -- the regime diagnosis said "too little drive" on
+    attempt after attempt and the models never did the arithmetic. The
+    design prompt now carries the bridge net pattern and the Rs sizing
+    formula, and this pins that they actually reach the model."""
+    provider = FakeProvider([INTENT_JSON, json.dumps(CIRCUIT)])
+    solve(provider, workdir=tmp_path)
+
+    design_prompt = provider.prompts[1]
+    assert "NEITHER is ground" in design_prompt
+    assert "STARVES the zener" in design_prompt
+    assert "Rs = (Vsupply_dc - Vz) / (Iload + 0.005)" in design_prompt
+
+
 def test_the_reading_is_emitted_BEFORE_any_answer(tmp_path):
     """Nothing downstream can prove the intent is the right reading of the
     question, so a caller must be able to show it first."""
