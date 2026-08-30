@@ -370,7 +370,16 @@ class AnthropicProvider:
                 "then set ANTHROPIC_API_KEY (or run `ant auth login`)."
             ) from None
         try:
-            self.client = anthropic.Anthropic()
+            # An identity-linked API key (measured on the first paid call,
+            # 2026-08-31) requires the workspace id on every request. The
+            # SDK has no built-in switch for it, so it rides as a default
+            # header when ANTHROPIC_WORKSPACE_ID is set.
+            kwargs = {}
+            workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+            if workspace:
+                kwargs["default_headers"] = {
+                    "anthropic-workspace-id": workspace}
+            self.client = anthropic.Anthropic(**kwargs)
         except Exception as e:                          # noqa: BLE001
             raise LLMError(f"could not construct an Anthropic client: {e}") from None
 
@@ -418,6 +427,13 @@ class AnthropicProvider:
         """
         kind = type(error).__name__.lower()
         text = str(error)
+        if "anthropic-workspace-id is required" in text:
+            return LLMError(
+                "this Anthropic key is identity-linked and needs its "
+                "workspace named on every request. Set "
+                "ANTHROPIC_WORKSPACE_ID to the workspace id this key "
+                "belongs to (console.anthropic.com -> Settings -> "
+                "Workspaces), in the same .env as the key.")
         if "timeout" in kind or "connection" in kind:
             return TransientNetworkError(
                 f"Anthropic: {type(error).__name__}: {error}")

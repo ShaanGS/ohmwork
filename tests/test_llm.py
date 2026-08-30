@@ -258,6 +258,21 @@ def test_an_anthropic_overload_is_transient_not_fatal():
         anthropic(raise_error=error).complete("hello")
 
 
+def test_a_workspace_requirement_names_the_variable_to_set():
+    """MEASURED on the FIRST paid call, 2026-08-31: an identity-linked key
+    answers 400 'anthropic-workspace-id is required'. The raw message names
+    a header; the fix a user can act on is an environment variable."""
+    error = type("BadRequestError", (Exception,), {"status_code": 400})(
+        "anthropic-workspace-id is required when authenticating with an "
+        "identity-linked API key; send the id of the workspace this "
+        "request acts in.")
+    with pytest.raises(llm.LLMError) as caught:
+        anthropic(raise_error=error).complete("hello")
+    message = str(caught.value)
+    assert "ANTHROPIC_WORKSPACE_ID" in message
+    assert "console.anthropic.com" in message
+
+
 def test_an_ordinary_anthropic_failure_stays_a_plain_LLMError():
     error = type("BadRequestError", (Exception,), {"status_code": 400})(
         "invalid request")
