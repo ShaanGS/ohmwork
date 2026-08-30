@@ -123,7 +123,12 @@ function backendCommand() {
 
 async function waitForHealthyBackend(port) {
   const url = `http://127.0.0.1:${port}/api/health`;
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  // 30 seconds, not 5. MEASURED on the first packaged launch: the backend is
+  // a ONEFILE PyInstaller executable that extracts itself before Python even
+  // starts (~6s on this machine, longer under a cold antivirus scan of an
+  // unsigned 80 MB exe), and a 5s limit killed a healthy backend and
+  // reported "did not become ready" over an app that only needed patience.
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     try {
       const response = await net.fetch(url);
       if (response.ok) return;

@@ -94,6 +94,12 @@ RULES:
    and NOTHING at all if the question only asks for it to be reported or
    observed. A target with no number is honest and is expected; inventing a
    figure the question never gave is not.
+   BUT: when the question STATES a number for a quantity it also asks to be
+   delivered or reported -- "delivers 9 V ... report the output voltage",
+   "a regulated 6.2 V supply" -- that target MUST carry the stated value
+   (choose the tolerance, and record the choice in "notes"). A stated figure
+   that no target checks is dropped work: the one number the question gave
+   would go unverified.
    "tolerance_pct" must be greater than 0 and at most {max_tolerance:g}.
    Wider than that and any plausible circuit satisfies it, so the check
    cannot fail.
