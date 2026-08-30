@@ -177,8 +177,19 @@ def test_t_junction_connects():
 
 def test_missing_flag_hard_fails_naming_the_pin():
     text = emit(reference_circuit())
-    # Delete the flag on Q1's base (the vb flag whose stub points left).
-    lines = [l for l in text.split("\r\n") if l != "FLAG 768 208 vb"]
+    # Delete the flag on Q1's base, found from the geometry rather than
+    # hardcoded: layout is presentation and free to change, the invariant
+    # under test is the parser naming the pin whose flag is gone.
+    from ohmwork.symbols import pin_positions, stub_directions
+
+    lines = text.split("\r\n")
+    q1 = next(i for i, l in enumerate(lines)
+              if l == "SYMATTR InstName Q1") - 1
+    _, _, x, y, rot = lines[q1].split()
+    bx, by = pin_positions("npn", (int(x), int(y)), rot)["B"]
+    dx, dy = stub_directions("npn", rot)["B"]
+    flag = f"FLAG {bx + dx * 16} {by + dy * 16} vb"
+    lines = [l for l in lines if l != flag]
     assert len(lines) == len(text.split("\r\n")) - 1, "test setup broke"
     with pytest.raises(ParseError, match=r"Q1\.B"):
         parse_asc(crlf(lines).rstrip("\r\n") + "\r\n")

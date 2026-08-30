@@ -98,6 +98,123 @@ def test_values_and_parts_emitted():
         assert f"SYMATTR Value {value}" in text
 
 
+# ------------------------------------------------------------------ layout
+#
+# The owner's requirement, 2026-08-31, after opening the first solved Q3
+# .asc: "it should of course look the human way". The layout reads like a
+# hand-drawn schematic -- signal flowing left to right along a rail, shunt
+# parts hanging vertically with ground below, the source at the far left --
+# while CONNECTIVITY stays label-based: no routed wires, ever, because
+# routing is where silent errors live. These tests assert orientation and
+# ordering, never exact coordinates.
+
+
+def q3_circuit():
+    """The solved Q3 shape: bridge + C-L-C + damped zener regulator."""
+    return {
+        "components": [
+            {"ref": "V1", "type": "voltage", "value": "SINE(0 16.97 50)"},
+            {"ref": "D1", "type": "diode", "part": "1N4007"},
+            {"ref": "D2", "type": "diode", "part": "1N4007"},
+            {"ref": "D3", "type": "diode", "part": "1N4007"},
+            {"ref": "D4", "type": "diode", "part": "1N4007"},
+            {"ref": "C1", "type": "cap", "value": "470u"},
+            {"ref": "L1", "type": "ind", "value": "1m"},
+            {"ref": "R2", "type": "res", "value": "10"},
+            {"ref": "C2", "type": "cap", "value": "470u"},
+            {"ref": "R1", "type": "res", "value": "390"},
+            {"ref": "DZ1", "type": "zener", "part": "DZ6V2"},
+            {"ref": "RL", "type": "res", "value": "1k"},
+        ],
+        "nets": {
+            "vin": ["V1.+", "D1.anode", "D3.cathode"],
+            "vin2": ["V1.-", "D2.anode", "D4.cathode"],
+            "vrect": ["D1.cathode", "D2.cathode", "C1.a", "L1.a"],
+            "nlx": ["L1.b", "R2.a"],
+            "vfilt": ["R2.b", "C2.a", "R1.a"],
+            "vout": ["R1.b", "DZ1.cathode", "RL.a"],
+            "0": ["D3.anode", "D4.anode", "C1.b", "C2.b", "DZ1.anode",
+                  "RL.b"],
+        },
+        "directives": [".model DZ6V2 D(BV=6.2 IBV=5m)",
+                       ".tran 0 200m 100m 100u"],
+    }
+
+
+def placed_pins(circuit):
+    """ref -> {pin: (x, y)} recovered from the emitted SYMBOL lines."""
+    symbols, _, _ = parse(emit(circuit).split("\r\n"))
+    refs = [c["ref"] for c in circuit["components"]]
+    return {ref: pin_positions(sym, anchor, rot)
+            for ref, (sym, anchor, rot) in zip(refs, symbols)}
+
+
+def test_a_grounded_component_hangs_vertical_with_ground_down():
+    """A shunt element reads as one: upright, ground symbol below it."""
+    pins = placed_pins(reference_circuit())
+    # D1 is the shunt zener: anode on ground, so cathode above anode.
+    assert pins["D1"]["anode"][0] == pins["D1"]["cathode"][0]
+    assert pins["D1"]["anode"][1] > pins["D1"]["cathode"][1]
+    # RL: b on ground, below a.
+    assert pins["RL"]["a"][0] == pins["RL"]["b"][0]
+    assert pins["RL"]["b"][1] > pins["RL"]["a"][1]
+
+
+def test_a_series_component_lies_horizontal_facing_downstream():
+    """R1 carries vin to vb: it lies flat, upstream pin on the left."""
+    pins = placed_pins(reference_circuit())
+    assert pins["R1"]["a"][1] == pins["R1"]["b"][1]
+    assert pins["R1"]["a"][0] < pins["R1"]["b"][0]
+
+
+def test_the_source_sits_leftmost():
+    for circuit in (reference_circuit(), q3_circuit()):
+        pins = placed_pins(circuit)
+        v1_x = max(x for x, _ in pins["V1"].values())
+        for ref, positions in pins.items():
+            if ref == "V1":
+                continue
+            assert v1_x < min(x for x, _ in positions.values()), (
+                f"{ref} sits at or left of the source")
+
+
+def test_signal_flows_left_to_right():
+    """Down the Q3 chain -- bridge, filter, regulator, load -- x rises."""
+    pins = placed_pins(q3_circuit())
+
+    def x_of(ref):
+        return min(x for x, _ in pins[ref].values())
+
+    assert x_of("V1") < x_of("D1") < x_of("L1") < x_of("R1")
+    assert x_of("R1") <= x_of("RL")
+
+
+def test_bridge_diodes_agree_with_the_current_direction():
+    """D1 conducts vin -> vrect (anode left); D3 returns ground to vin
+    (a shunt, cathode up)."""
+    pins = placed_pins(q3_circuit())
+    assert pins["D1"]["anode"][0] < pins["D1"]["cathode"][0]
+    assert pins["D3"]["cathode"][1] < pins["D3"]["anode"][1]
+
+
+def test_no_two_symbols_share_an_anchor():
+    for circuit in (reference_circuit(), q3_circuit()):
+        symbols, _, _ = parse(emit(circuit).split("\r\n"))
+        anchors = [anchor for _, anchor, _ in symbols]
+        assert len(anchors) == len(set(anchors))
+
+
+def test_layout_coordinates_stay_on_grid_and_non_negative():
+    for circuit in (reference_circuit(), q3_circuit()):
+        symbols, wires, flags = parse(emit(circuit).split("\r\n"))
+        coords = [a for _, a, _ in symbols]
+        coords += [p for w in wires for p in w]
+        coords += list(flags)
+        for x, y in coords:
+            assert x % 16 == 0 and y % 16 == 0
+            assert x >= 0 and y >= 0
+
+
 def test_rejects_part_on_a_value_component():
     circuit = reference_circuit()
     circuit["components"][1] = {"ref": "R1", "type": "res", "part": "1.8k"}

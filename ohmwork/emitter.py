@@ -24,12 +24,16 @@ from ohmwork.symbols import (
 )
 
 STUB_LEN = 16
-GRID_X0 = 112        # anchor of the first component
+GRID_X0 = 112        # the source column, left of every net column
 GRID_Y0 = 160
 COL_SPACING = 224    # wide enough for an npn plus its base stub and label
-TEXT_X = 112         # directives go below the component row
-TEXT_Y0 = 480
+TEXT_X = 112         # directives go below the drawing
+TEXT_Y0 = 560
 TEXT_SPACING = 32
+
+RAIL_Y = GRID_Y0         # the horizontal signal rail series parts sit on
+SHUNT_Y = RAIL_Y + 144   # shunt parts hang below it, ground pointing down
+NET_X0 = GRID_X0 + COL_SPACING   # first net column, right of the source
 
 
 class CircuitError(ValueError):
@@ -39,7 +43,7 @@ class CircuitError(ValueError):
 def emit(circuit: dict) -> str:
     """Render a circuit description to .asc text (CRLF line endings)."""
     _validate(circuit)
-    anchors = _place(circuit["components"])
+    anchors = _place(circuit["components"], circuit["nets"])
 
     body = _symbol_lines(circuit["components"], anchors)
     body += _stub_and_flag_lines(circuit, anchors)
@@ -76,12 +80,110 @@ def write_asc(circuit: dict, path: str) -> None:
 # ---------------------------------------------------------------- placement
 
 
-def _place(components: list[dict]) -> dict[str, tuple[int, int]]:
-    """One row, fixed column spacing, all R0. Dumb on purpose."""
-    return {
-        comp["ref"]: (GRID_X0 + i * COL_SPACING, GRID_Y0)
-        for i, comp in enumerate(components)
+def _place(components: list[dict],
+           nets: dict) -> dict[str, tuple[int, int, str]]:
+    """Signal-flow layout: ref -> (x, y, rotation).
+
+    The owner's requirement (2026-08-31, on opening the first solved Q3
+    file): the schematic should read the human way. So: the source at the
+    far left; series elements horizontal along a rail, upstream pin facing
+    left, ordered left-to-right by how far each net is from the source;
+    shunt elements vertical below the rail with their ground pin pointing
+    DOWN, where LTspice renders the net-0 flag as a ground symbol.
+
+    What did NOT change is the correctness story: connectivity is still
+    net labels on 16-unit stubs, never routed wires, so the geometry is
+    presentation only and the round trip stays meaningful.
+    """
+    pin_net = {entry: net for net, pins in nets.items() for entry in pins}
+    comp_pins = {
+        comp["ref"]: {p.name: pin_net.get(f"{comp['ref']}.{p.name}")
+                      for p in pins_of(comp["type"])}
+        for comp in components
     }
+    net_x = _net_columns(components, comp_pins)
+
+    placements: dict[str, tuple[int, int, str]] = {}
+    occupied: set[tuple[int, int]] = set()
+
+    def claim(x, y, step=(0, 160)):
+        while (x, y) in occupied:
+            x, y = x + step[0], y + step[1]
+        occupied.add((x, y))
+        return x, y
+
+    def snap(x):
+        return (x // 16) * 16
+
+    for comp in components:
+        ref, ctype = comp["ref"], comp["type"]
+        nets_of = comp_pins[ref]
+        top = pins_of(ctype)[0].name   # the pin that sits UP at R0
+
+        if ctype == "voltage":
+            # R0 puts '+' up; a source grounded at '+' flips.
+            rot = "R180" if nets_of.get("+") == "0" else "R0"
+            x, y = claim(GRID_X0, RAIL_Y)
+        elif len(nets_of) == 2:
+            (p1, n1), (p2, n2) = nets_of.items()
+            if "0" in (n1, n2) and n1 != n2:
+                gpin, other = (p1, n2) if n1 == "0" else (p2, n1)
+                rot = "R180" if gpin == top else "R0"
+                x, y = claim(net_x.get(other, NET_X0), SHUNT_Y,
+                             step=(96, 0))
+            else:
+                xa = net_x.get(n1, NET_X0)
+                xb = net_x.get(n2, NET_X0)
+                left_pin = p1 if xa <= xb else p2
+                # R270 rotates the R0-top pin onto the LEFT.
+                rot = "R270" if left_pin == top else "R90"
+                x, y = claim(snap((xa + xb) // 2), RAIL_Y)
+        else:
+            # Three-terminal devices sit upright on the rail at the mean
+            # of their nets' columns; R0 keeps C up, B left, E down.
+            xs = [net_x[n] for n in nets_of.values() if n in net_x]
+            rot = "R0"
+            x, y = claim(snap(sum(xs) // len(xs)) if xs else NET_X0,
+                         RAIL_Y)
+        placements[ref] = (x, y, rot)
+    return placements
+
+
+def _net_columns(components, comp_pins) -> dict[str, int]:
+    """One x column per non-ground net, ordered by distance from the source.
+
+    Distance is relaxed over components-as-edges until it stops changing;
+    ground gets no column (it is a symbol, not a place), and a net no
+    source reaches sorts after everything reached.
+    """
+    unreached = 10 ** 6
+    depth: dict[str, int] = {}
+    every: set[str] = set()
+    for comp in components:
+        for net in comp_pins[comp["ref"]].values():
+            if net and net != "0":
+                every.add(net)
+                if comp["type"] == "voltage":
+                    depth[net] = 0
+
+    changed = True
+    while changed:
+        changed = False
+        for comp in components:
+            ns = [n for n in comp_pins[comp["ref"]].values()
+                  if n and n != "0"]
+            if not ns:
+                continue
+            base = min(depth.get(n, unreached) for n in ns)
+            if base >= unreached:
+                continue
+            for n in ns:
+                if depth.get(n, unreached) > base + 1:
+                    depth[n] = base + 1
+                    changed = True
+
+    order = sorted(every, key=lambda n: (depth.get(n, unreached), n))
+    return {net: NET_X0 + i * COL_SPACING for i, net in enumerate(order)}
 
 
 # ----------------------------------------------------------------- emission
@@ -90,8 +192,8 @@ def _place(components: list[dict]) -> dict[str, tuple[int, int]]:
 def _symbol_lines(components, anchors) -> list[str]:
     lines = []
     for comp in components:
-        x, y = anchors[comp["ref"]]
-        lines.append(f"SYMBOL {comp['type']} {x} {y} R0")
+        x, y, rot = anchors[comp["ref"]]
+        lines.append(f"SYMBOL {comp['type']} {x} {y} {rot}")
         lines.append(f"SYMATTR InstName {comp['ref']}")
         # The .asc format has one attribute slot for both scalar values
         # and part names; validation guarantees exactly one is set.
@@ -106,8 +208,9 @@ def _stub_and_flag_lines(circuit, anchors) -> list[str]:
     for net, pins in circuit["nets"].items():
         for entry in pins:
             ref, pin = entry.split(".", 1)
-            positions = pin_positions(types[ref], anchors[ref], "R0")
-            directions = stub_directions(types[ref], "R0")
+            x, y, rot = anchors[ref]
+            positions = pin_positions(types[ref], (x, y), rot)
+            directions = stub_directions(types[ref], rot)
             px, py = positions[pin]
             dx, dy = directions[pin]
             fx, fy = px + dx * STUB_LEN, py + dy * STUB_LEN
