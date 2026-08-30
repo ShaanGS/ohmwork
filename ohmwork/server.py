@@ -19,11 +19,17 @@ It does, deliberately. It is now:
     no response may carry a circuit or a table Logisim did not confirm,
     and every response names the evaluator that confirmed it.
 
-ANALOG IS NOT SERVED HERE, and that is not an oversight. LTspice is a
-Windows GUI application; a Linux host cannot run it, and ngspice is not a
-substitute because it cannot read LTspice's device libraries. An analog
-answer from this server could only ever be unverified, which is precisely
-what the original rule was protecting against.
+ANALOG IS SERVED ONLY WHERE LTSPICE IS (added 2026-08-30 for the desktop
+app, whose backend this is). The rule holds by construction: an analog
+question is routed to `analog.solve_analog`, which measures the emitted
+file with LTspice and raises rather than returning a circuit that missed
+its intent -- and on a machine with no LTspice (every Linux host; LTspice
+is a Windows GUI application, and ngspice cannot read its device
+libraries) the question is REFUSED with the download named, never answered
+unverified. An analog answer is also a WEAKER claim than a digital one --
+numbers checked against the question's own figures, not rows checked
+against an exhaustive table -- so it arrives as its own "measured" event,
+never as "verified".
 
 WHAT A HOSTED TOOL WITH SOMEBODY'S API KEYS MUST NOT GET WRONG
 --------------------------------------------------------------
@@ -53,8 +59,14 @@ from pathlib import Path
 from fastapi import Cookie, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
-from ohmwork.domain import DomainError, check_digital
+from ohmwork.domain import DomainError, check_analog, check_digital, classify
 from ohmwork.llm import PoolExhausted
+
+#: Where to get the analog evaluator. Named in the refusal when it is absent,
+#: because "install LTspice" without the where is an instruction to go
+#: searching, and the first search result is not always Analog Devices.
+LTSPICE_DOWNLOAD = ("https://www.analog.com/en/resources/design-tools-and-"
+                    "calculators/ltspice-simulator.html")
 
 #: How long a login lasts. Long enough that five people are not typing a
 #: passphrase all day; short enough that a borrowed laptop is not forever.
@@ -154,7 +166,19 @@ def _default_solver(question, *, workdir, progress=None):
                  progress=progress)
 
 
-def create_app(*, solver=None, password: str | None = None,
+def _default_analog_solver(question, *, workdir, progress=None):
+    """The real analog loop. LTspiceBackend() raises FileNotFoundError when
+    LTspice is absent, and the endpoint turns that into a REFUSAL naming the
+    download -- an analog question must never be answered without it."""
+    from ohmwork.analog import solve_analog
+    from ohmwork.simulate import LTspiceBackend
+
+    return solve_analog(question, backend=LTspiceBackend(), workdir=workdir,
+                        progress=progress)
+
+
+def create_app(*, solver=None, analog_solver=None,
+               password: str | None = None,
                max_login_attempts: int = 10,
                max_question_chars: int = MAX_QUESTION_CHARS,
                max_concurrent: int = MAX_CONCURRENT_SOLVES,
@@ -171,6 +195,7 @@ def create_app(*, solver=None, password: str | None = None,
         secure_cookies = os.environ.get("OHMWORK_SECURE_COOKIES") == "1"
 
     solver = solver or _default_solver
+    analog_solver = analog_solver or _default_analog_solver
     secret = _session_secret(password)
     app = FastAPI(title="ohmwork", docs_url=None, redoc_url=None)
 
@@ -242,16 +267,28 @@ def create_app(*, solver=None, password: str | None = None,
     async def _run(question: str):
         """Stream the design loop's own steps as they happen.
 
-        Not decoration: a solve makes several model calls and several Logisim
-        runs, and the steps ARE the honest account of what happened -- the
-        reading it worked from, and every design it had to throw away.
+        Not decoration: a solve makes several model calls and several
+        simulator runs, and the steps ARE the honest account of what happened
+        -- the reading it worked from, and every design it had to throw away.
         """
+        # WHICH HALF answers is a guess made from the question's words, so it
+        # is DISCLOSED before anything runs, exactly as the CLI prints it. A
+        # misroute is safe: each loop runs its own domain check and refuses
+        # with the reason, which is a better failure than a confident answer
+        # from the wrong half of the tool.
+        routing = classify(question)
+        yield sse("routing", {"domain": routing.domain,
+                              "reason": routing.reason})
+
         # The domain screen belongs to the ENDPOINT as well as to the loop.
-        # It is cheap, it spends nothing, and putting it only inside
-        # design.solve would make the guarantee depend on which solver was
+        # It is cheap, it spends nothing, and putting it only inside the
+        # solve functions would make the guarantee depend on which solver was
         # injected -- the same reasoning as _backfill below.
         try:
-            check_digital(question)
+            if routing.domain == "analog":
+                check_analog(question)
+            else:
+                check_digital(question)
         except DomainError as exc:
             yield sse("refused", {"message": f"{exc}", "download": None})
             return
@@ -269,15 +306,40 @@ def create_app(*, solver=None, password: str | None = None,
         async def worker():
             try:
                 async with gate:
+                    chosen = analog_solver if routing.domain == "analog" \
+                        else solver
                     solution = await asyncio.to_thread(functools.partial(
-                        solver, question, workdir=workdir, progress=progress))
+                        chosen, question, workdir=workdir, progress=progress))
                 # The contract belongs to the ENDPOINT, not to whichever
                 # solver it was handed: the reading and the rejected attempts
                 # are reported whether or not the loop streamed them live. A
                 # guarantee that holds only for a chatty implementation is
                 # not a guarantee.
-                _backfill(solution, seen, progress)
-                progress("verified", _verified_payload(solution, downloads))
+                if routing.domain == "analog":
+                    _backfill_analog(solution, seen, progress)
+                    progress("measured", _measured_payload(solution, downloads))
+                else:
+                    _backfill(solution, seen, progress)
+                    progress("verified", _verified_payload(solution, downloads))
+            except FileNotFoundError as exc:
+                # The analog evaluator is not on this machine. A REFUSAL that
+                # names the download, per the product contract: an analog
+                # question without LTspice is never answered, and "install
+                # this, from here" is the whole useful content of the answer.
+                # Digital-path FileNotFoundErrors are NOT this story and fall
+                # through to the plain error outcome.
+                if routing.domain != "analog":
+                    progress("error", {"message": f"{exc}", "download": None})
+                    shutil.rmtree(workdir, ignore_errors=True)
+                    return
+                progress("refused", {
+                    "message": (
+                        f"This question needs LTspice, which was not found on "
+                        f"this machine, so it was refused rather than "
+                        f"answered unverified.\n\n{exc}\n\nInstall LTspice "
+                        f"(free, from {LTSPICE_DOWNLOAD}) and ask again."),
+                    "download": None})
+                shutil.rmtree(workdir, ignore_errors=True)
             except PoolExhausted as exc:
                 # Not a failure of the design and not a refusal of the
                 # question: there was nobody to ask. A third outcome, and it
@@ -321,11 +383,14 @@ def create_app(*, solver=None, password: str | None = None,
         path = downloads.get(token)
         if path is None or not path.is_file():
             raise HTTPException(404, "no such circuit")
-        # The FILE Logisim evaluated, byte for byte. A .circ carries one run
-        # and no directives, so unlike the LTspice deliverable the bytes
-        # shipped really are the bytes that were checked.
-        return FileResponse(path, media_type="application/xml",
-                            filename=f"{token[:8]}.circ")
+        # For a .circ: the FILE Logisim evaluated, byte for byte -- one run,
+        # no directives. For an .asc the claim is weaker (the whole experiment
+        # with runs commented; the per-run scratch files are what LTspice
+        # ran), and the measured payload's file_note says so.
+        suffix = path.suffix.lower() or ".circ"
+        media = "application/xml" if suffix == ".circ" else "text/plain"
+        return FileResponse(path, media_type=media,
+                            filename=f"{token[:8]}{suffix}")
 
     _mount_static(app, static_dir)
     return app
@@ -350,6 +415,94 @@ def _backfill(solution, seen: set, progress) -> None:
         for index, failure in solution.failed_attempts:
             progress("attempt", {"index": index, "status": "rejected",
                                  "failure": failure})
+
+
+def _backfill_analog(solution, seen: set, progress) -> None:
+    """The analog mirror of _backfill, for the same two non-negotiables."""
+    if "reading" not in seen:
+        intent = solution.intent
+        progress("reading", {"intent": intent.render(),
+                             "topology": intent.topology,
+                             "checkable": intent.checkable,
+                             "observations": (len(intent.targets)
+                                              - intent.checkable),
+                             "notes": list(intent.notes)})
+    if "attempt" not in seen:
+        for index, failure in solution.failed_attempts:
+            progress("attempt", {"index": index, "status": "rejected",
+                                 "failure": failure})
+
+
+def _measured_payload(solution, downloads: dict) -> dict:
+    """What an analog answer is allowed to claim -- and it is DELIBERATELY a
+    different event from "verified", because it is a weaker claim.
+
+    A digital answer is checked row by row against an exhaustive table. This
+    one is checked against the numbers the question named -- and when the
+    question named none ("observe the waveforms" is a whole class of real
+    question), NOTHING NUMERIC WAS CHECKED and the headline says so instead
+    of reading as a pass over nothing. `checked` and `observations` travel
+    with the payload so the page can keep that split visible.
+    """
+    token = secrets.token_urlsafe(16)
+    downloads[token] = Path(solution.asc_path)
+    cmp = solution.comparison
+
+    # The evaluator comes from the MEASUREMENTS, not from a config field: the
+    # experiment mapping is what actually ran, and each measurement records
+    # who computed it.
+    backend = verification = "unknown"
+    for measurement in solution.experiment.values():
+        backend = getattr(measurement, "backend", backend) or backend
+        verification = getattr(measurement, "verification",
+                               verification) or verification
+        break
+
+    units = {target.name: {"quantity": target.quantity, "unit": target.unit}
+             for target in solution.intent.targets}
+    if cmp.checked:
+        headline = (f"meets the intent after {solution.attempts} design "
+                    f"attempt(s)")
+    else:
+        headline = (f"ran and stayed in regime after {solution.attempts} "
+                    f"design attempt(s) — NOTHING NUMERIC WAS CHECKED: the "
+                    f"question stated no figure to hit")
+    return {
+        "download": token,
+        "evaluator": backend,
+        "verification": verification,
+        "headline": headline,
+        "checked": cmp.checked,
+        "observations": cmp.observations,
+        "summary": cmp.summary,
+        "outcomes": [
+            {"name": outcome.name,
+             "quantity": units.get(outcome.name, {}).get("quantity", ""),
+             "unit": units.get(outcome.name, {}).get("unit", ""),
+             "wanted": outcome.wanted,
+             "measured": outcome.measured,
+             "ok": outcome.ok,
+             "checked": outcome.checked,
+             "reason": outcome.reason}
+            for outcome in cmp.outcomes],
+        "regimes_held": cmp.regimes_held,
+        "regimes_failed": list(cmp.regimes_failed),
+        "warnings": list(cmp.warnings) + list(solution.warnings),
+        "basis": solution.basis.to_dict(),
+        "attempts": solution.attempts,
+        "designed_by": f"{solution.provider}/{solution.model}",
+        # The claim the FILE can honestly make, and it is NOT the .circ's:
+        # the .asc carries the whole experiment with one run active and the
+        # rest commented, so its exact bytes were never handed to LTspice --
+        # the per-run scratch files were. Shipped in the payload so the page
+        # cannot render the stronger claim by forgetting which half answered.
+        "file_note": (
+            "This .asc carries the whole experiment: the first run active, "
+            "the others commented out to uncomment. Those exact bytes are "
+            "therefore NOT what LTspice ran — the per-run files were. What "
+            "this file has is the emit/parse geometric round trip. The "
+            "layout is generated mechanically: correct, not pretty."),
+    }
 
 
 def _verified_payload(solution, downloads: dict) -> dict:

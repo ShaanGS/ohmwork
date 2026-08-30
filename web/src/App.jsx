@@ -27,7 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 const EXAMPLES = [
   'Design a 2-to-4 decoder with an active-high enable.',
   'Design a 4-to-2 priority encoder with an enable input and a valid output, using basic gates only.',
-  'Design a circuit that outputs 1 when exactly two of its three inputs are high.',
+  'Design a series voltage regulator in LTspice that delivers 9 V to a 1 kOhm load from a 15 V unregulated supply. Report the output voltage and the zener current.',
 ]
 
 async function* sseStream(response) {
@@ -132,9 +132,11 @@ function Solver({ onExpired }) {
   const [question, setQuestion] = useState('')
   const [asked, setAsked] = useState(null)
   const [running, setRunning] = useState(false)
+  const [routing, setRouting] = useState(null)
   const [reading, setReading] = useState(null)
   const [attempts, setAttempts] = useState([])
   const [verified, setVerified] = useState(null)
+  const [measured, setMeasured] = useState(null)
   const [refused, setRefused] = useState(null)
   const [unavailable, setUnavailable] = useState(null)
   const [error, setError] = useState(null)
@@ -143,7 +145,8 @@ function Solver({ onExpired }) {
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [asked, reading, attempts, verified, refused, unavailable, error])
+  }, [asked, routing, reading, attempts, verified, measured, refused,
+      unavailable, error])
 
   async function run() {
     const text = question.trim()
@@ -151,9 +154,11 @@ function Solver({ onExpired }) {
     setRunning(true)
     setAsked(text)
     setQuestion('')
+    setRouting(null)
     setReading(null)
     setAttempts([])
     setVerified(null)
+    setMeasured(null)
     setRefused(null)
     setUnavailable(null)
     setError(null)
@@ -179,12 +184,14 @@ function Solver({ onExpired }) {
     }
 
     for await (const [name, data] of sseStream(response)) {
-      if (name === 'reading') setReading(data)
+      if (name === 'routing') setRouting(data)
+      else if (name === 'reading') setReading(data)
       else if (name === 'attempt') {
         setAttempts((previous) => [
           ...previous.filter((a) => a.index !== data.index), data,
         ].sort((a, b) => a.index - b.index))
       } else if (name === 'verified') setVerified(data)
+      else if (name === 'measured') setMeasured(data)
       else if (name === 'refused') setRefused(data)
       else if (name === 'unavailable') setUnavailable(data)
       else if (name === 'error') setError(data)
@@ -198,7 +205,7 @@ function Solver({ onExpired }) {
         <Wordmark className="text-sm" />
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-muted-foreground">
-            digital · logisim evolution
+            digital · logisim&ensp;|&ensp;analog · ltspice
           </Badge>
           {desktop && (
             <Button
@@ -221,17 +228,20 @@ function Solver({ onExpired }) {
           {!asked && <Intro onPick={setQuestion} />}
 
           {asked && <Asked text={asked} />}
+          {routing && <Routing routing={routing} />}
           {refused && <Refused refused={refused} />}
           {unavailable && <Unavailable info={unavailable} />}
           {reading && <Reading reading={reading} />}
 
           {attempts.map((attempt) => (
-            <Attempt key={attempt.index} attempt={attempt} settled={!!verified} />
+            <Attempt key={attempt.index} attempt={attempt} settled={!!verified || !!measured} />
           ))}
 
           {verified && <Verified verified={verified} />}
+          {measured && <Measured measured={measured} />}
           {error && <Failed error={error} />}
-          {running && !verified && !error && !refused && !unavailable && <Working />}
+          {running && !verified && !measured && !error && !refused && !unavailable
+            && <Working analog={routing?.domain === 'analog'} />}
           <div ref={bottom} />
         </div>
       </main>
@@ -325,14 +335,16 @@ function Intro({ onPick }) {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <h1 className="text-2xl font-medium tracking-tight">
-        Ask a digital logic question.
+        Ask an electronics lab question.
       </h1>
       <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-        You get a Logisim circuit file and its truth table. The circuit is
-        designed, emitted as a real <code className="text-foreground">.circ</code>,
-        and that file is handed to Logisim Evolution to evaluate. If Logisim
-        disagrees with the specification, the design is thrown away and redone —
-        so nothing reaches you unchecked.
+        A digital question gets a Logisim <code className="text-foreground">.circ</code>
+        {' '}and its truth table, every row computed by Logisim Evolution from
+        that exact file. An analog question gets an LTspice
+        {' '}<code className="text-foreground">.asc</code> and the measured
+        numbers, with what was checked and what was merely reported kept
+        apart. Either way, a design the simulator disagrees with is thrown
+        away and redone — nothing reaches you unchecked.
       </p>
       <div className="mt-6 space-y-2">
         {EXAMPLES.map((example) => (
@@ -348,11 +360,11 @@ function Intro({ onPick }) {
         ))}
       </div>
       <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
-        Analog questions (LTspice) are answered on the command line, not here:
-        LTspice is a Windows application and this server cannot run it, so an
-        analog answer from here could only ever be unverified. Sequential
-        circuits and parts whose pin geometry has never been measured are
-        refused for their own reasons, and the refusal says which.
+        Analog needs LTspice on this machine — without it, an analog question
+        is refused with the download named, never answered unverified.
+        Sequential circuits and parts whose pin geometry has never been
+        measured are refused for their own reasons, and the refusal says
+        which.
       </p>
     </div>
   )
@@ -369,13 +381,26 @@ function Asked({ text }) {
   )
 }
 
-function Working() {
+function Working({ analog }) {
   return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground
                     animate-in fade-in">
       <Loader2 className="size-3.5 animate-spin" />
-      working — a solve takes a minute
+      {analog
+        ? 'working — an analog solve runs LTspice for every attempt, so this can take a few minutes'
+        : 'working — a solve takes a minute'}
     </div>
+  )
+}
+
+function Routing({ routing }) {
+  // Which half answers is a guess made from the question's words, so it is
+  // disclosed, exactly as the CLI prints it, before anything runs.
+  return (
+    <p className="text-xs text-muted-foreground animate-in fade-in">
+      read as an <span className="font-medium uppercase">{routing.domain}</span>
+      {' '}question: {routing.reason}
+    </p>
   )
 }
 
@@ -388,7 +413,7 @@ function Reading({ reading }) {
           the reading
         </p>
         <pre className="overflow-x-auto font-mono text-[13px] leading-relaxed">
-{reading.spec}
+{reading.spec || reading.intent}
         </pre>
         <Separator className="bg-caution/20" />
         <p className="text-xs leading-relaxed text-caution/90">
@@ -530,6 +555,124 @@ function Verified({ verified }) {
         <p className="text-xs leading-relaxed text-muted-foreground">
           The layout inside the file is generated mechanically — inputs in a
           left column, gates in columns by logic depth. Correct, not pretty.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function Measured({ measured }) {
+  // The analog answer. DELIBERATELY not the Verified card and not the word
+  // "verified": numbers checked against the question's own figures are a
+  // weaker claim than rows checked against an exhaustive table, and the two
+  // must not look alike. When the question stated no figure, the headline
+  // says nothing numeric was checked instead of reading as a pass.
+  const external = measured.verification === 'external'
+  const nothingChecked = !measured.checked
+  return (
+    <Card className={`animate-in fade-in slide-in-from-bottom-2 duration-500 ${
+      nothingChecked ? 'border-caution/40 bg-caution/5'
+                     : 'border-verified/40 bg-verified/5'}`}>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className={`flex items-center gap-2 text-sm ${
+            nothingChecked ? 'text-caution' : 'text-verified'}`}>
+            {nothingChecked
+              ? <CircleAlert className="size-4" />
+              : <Check className="size-4" strokeWidth={3} />}
+            {measured.headline}
+          </span>
+          <Button asChild size="sm">
+            <a href={`/api/circuit/${measured.download}`}>
+              <Download /> download .asc
+            </a>
+          </Button>
+        </div>
+
+        <Separator className={nothingChecked ? 'bg-caution/20' : 'bg-verified/20'} />
+
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
+          <Fact label="measured by">{measured.evaluator}</Fact>
+          <Fact label="verification">
+            {external
+              ? 'external — an outside simulator computed every number'
+              : 'INTERNAL — our own evaluator, unchecked by anything else'}
+          </Fact>
+          <Fact label="checked / reported">
+            {measured.checked} target{measured.checked === 1 ? '' : 's'} with a
+            stated figure · {measured.observations} reported only
+          </Fact>
+          <Fact label="regimes">
+            {measured.regimes_held} held
+            {measured.regimes_failed.length
+              ? ` · ${measured.regimes_failed.length} FAILED`
+              : ''}
+          </Fact>
+          <Fact label="designed by">{measured.designed_by}</Fact>
+        </dl>
+
+        <div className="overflow-x-auto rounded-lg border">
+          <Table className="font-mono text-[13px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>quantity</TableHead>
+                <TableHead>asked for</TableHead>
+                <TableHead className="text-right">measured</TableHead>
+                <TableHead>status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {measured.outcomes.map((outcome) => (
+                <TableRow key={outcome.name}>
+                  <TableCell>{outcome.quantity || outcome.name}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {outcome.wanted}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {outcome.measured === null || outcome.measured === undefined
+                      ? '—'
+                      : `${outcome.measured} ${outcome.unit}`}
+                  </TableCell>
+                  <TableCell className={
+                    !outcome.checked ? 'text-muted-foreground'
+                      : outcome.ok ? 'text-verified' : 'text-destructive'}>
+                    {!outcome.checked ? 'reported only'
+                      : outcome.ok ? 'within tolerance'
+                        : (outcome.reason || 'missed')}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {measured.regimes_failed.length > 0 && (
+          <p className="text-xs leading-relaxed text-destructive">
+            Regime assertions that FAILED — the numbers above touching those
+            runs are not reliable: {measured.regimes_failed.join('; ')}
+          </p>
+        )}
+        {measured.warnings.length > 0 && (
+          <p className="text-xs leading-relaxed text-caution/90">
+            {measured.warnings.join(' · ')}
+          </p>
+        )}
+
+        {measured.basis && (
+          <div className="space-y-2 rounded-lg border border-verified/20 p-3">
+            <p className="text-xs font-medium uppercase tracking-wider
+                          text-muted-foreground">
+              checked against
+            </p>
+            <p className="text-xs leading-relaxed">{measured.basis.headline}</p>
+            <p className="text-xs leading-relaxed text-caution/90">
+              Not established by any check here: {measured.basis.limit}
+            </p>
+          </div>
+        )}
+
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {measured.file_note}
         </p>
       </CardContent>
     </Card>

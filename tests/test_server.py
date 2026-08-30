@@ -1,4 +1,4 @@
-"""The web endpoint. Digital only, and it verifies before it answers.
+"""The web endpoint. Both halves, and it verifies before it answers.
 
 THE RULE THIS ENDPOINT REWRITES, AND WHY THAT IS ALLOWED. The project's
 standing rule said: no live-API hot path, because *"the server CANNOT
@@ -19,6 +19,14 @@ import llm.py" (it does now, deliberately). It is:
 That is what this file protects, along with the two things a hosted tool with
 somebody's API keys on it must not get wrong: letting a stranger in, and
 letting a key out.
+
+ANALOG (added 2026-08-30, for the desktop app whose backend this is): the
+endpoint routes on `domain.classify` and DISCLOSES the routing before
+anything runs. An analog answer arrives as its own "measured" event -- a
+deliberately weaker claim than "verified", because numbers checked against
+the question's own figures are not rows checked against an exhaustive table
+-- and on a machine with no LTspice the question is REFUSED with the
+download named, never answered unverified.
 """
 
 import json
@@ -69,15 +77,90 @@ class FakeSolution:
         return path
 
 
-def make_client(solver=None, *, password=PASSWORD, **kwargs):
+class FakeAnalogSolution:
+    """Shaped like analog.AnalogSolution, with the fields the endpoint reads.
+
+    The intent, the comparison and the basis are the REAL classes, not stubs:
+    what an analog answer is allowed to claim is decided in intent.py, and a
+    fake that invented its own wording here would let the two drift apart --
+    the same reasoning as FakeSolution using the real spec_basis.
+    """
+
+    def __init__(self, *, checked=1, failed=(), asc_text="Version 4.1\n"):
+        import types
+
+        from ohmwork import intent as intent_mod
+
+        target = intent_mod.Target(
+            name="vout", kind="dc_value", quantity="output voltage",
+            unit="V", value=9.0, tolerance_pct=2.0)
+        observation = intent_mod.Target(
+            name="i_zener", kind="dc_current", quantity="zener current",
+            unit="A", role="zener")
+        self.intent = intent_mod.Intent(
+            topology="series voltage regulator",
+            targets=(target, observation), stated_values=(), frequency=None,
+            notes=("tolerance of 2% was chosen, not stated",))
+        outcomes = (
+            intent_mod.TargetOutcome("vout", target.wanted(), 8.87064,
+                                     True, True),
+            intent_mod.TargetOutcome("i_zener", observation.wanted(), 0.0037,
+                                     True, False),
+        )
+        self.comparison = intent_mod.IntentComparison(
+            agrees=True,
+            summary="1 of 2 stated targets carry a number; vout measured "
+                    "8.87064 V against 9 V +/- 2%",
+            outcomes=outcomes, observations=1, checked=checked,
+            regimes_held=2, regimes_failed=())
+        self.basis = intent_mod.intent_basis(
+            self.intent, backend=None, plan={"measurements": []})
+        self.experiment = {"vout": types.SimpleNamespace(
+            backend="LTspice 26.0.2.1", verification="external")}
+        self.attempts = len(failed) + 1
+        self.failed_attempts = tuple(failed)
+        self.provider, self.model = "mistral", "mistral-large-latest"
+        self.warnings = ()
+        self._asc_text = asc_text
+
+    def write_to(self, workdir):
+        path = workdir / "solution.asc"
+        # newline="" so the bytes asserted by the download test are the bytes
+        # written, not Windows' \r\n translation of them.
+        path.write_text(self._asc_text, encoding="utf-8", newline="")
+        self.asc_path = path
+        return path
+
+
+ANALOG_QUESTION = (
+    "Design a series voltage regulator in LTspice that delivers 9 V to a "
+    "1 kOhm load from a 15 V unregulated supply.")
+
+
+def make_client(solver=None, *, analog_solver=None, password=PASSWORD,
+                **kwargs):
     def default_solver(question, *, workdir, progress=None):
         solution = FakeSolution()
         solution.write_to(workdir)
         return solution
 
+    def uninjected_analog(question, *, workdir, progress=None):
+        # A test that routes analog without saying what should happen there
+        # has made a mistake, and this must never fall through to the REAL
+        # analog solver -- that would spend model tokens and require LTspice.
+        raise AssertionError(
+            "routed to the analog solver, but the test injected none")
+
     app = server.create_app(solver=solver or default_solver,
+                            analog_solver=analog_solver or uninjected_analog,
                             password=password, **kwargs)
     return TestClient(app)
+
+
+def default_analog_solver(question, *, workdir, progress=None):
+    solution = FakeAnalogSolution()
+    solution.write_to(workdir)
+    return solution
 
 
 def login(client, password=PASSWORD):
@@ -254,21 +337,21 @@ def test_a_failed_solve_yields_an_error_and_NO_download():
     assert stream["error"].get("download") is None
 
 
-def test_an_analog_question_is_REFUSED_and_never_reaches_the_solver():
-    """The incident, at the endpoint.
+def test_an_analog_question_NEVER_reaches_the_digital_loop():
+    """The incident, at the endpoint -- updated for routing.
 
-    An LTspice question reached the digital loop, which invented boolean
+    An LTspice question once reached the digital loop, which invented boolean
     signals for 12 V RMS waveforms and served the result as VERIFIED. The
-    screen runs before the solver, so no model call is made and no green
-    badge is possible.
+    question is now ROUTED: it goes to the analog loop and the digital solver
+    is never called, so that green badge remains impossible.
     """
     calls = []
 
-    def solver(question, *, workdir, progress=None):
+    def digital_solver(question, *, workdir, progress=None):
         calls.append(question)
         raise AssertionError("an analog question reached the design loop")
 
-    client = make_client(solver)
+    client = make_client(digital_solver, analog_solver=default_analog_solver)
     login(client)
     stream = dict(events(solve(
         client,
@@ -276,12 +359,143 @@ def test_an_analog_question_is_REFUSED_and_never_reaches_the_solver():
         "a 470 uF filter and a Zener regulator on a 1 kOhm load.")))
 
     assert calls == []
+    # The answer is MEASURED, never "verified": numbers checked against the
+    # question's own figures are a weaker claim than rows checked against an
+    # exhaustive table, and the two must not share an event name.
     assert "verified" not in stream
-    # A refusal, rendered as its own thing: "the loop tried and could not" and
-    # "the loop should never have tried" are different facts about a question.
-    assert "refused" in stream
-    assert "LTspice" in stream["refused"]["message"]
-    assert stream["refused"]["download"] is None
+    assert "measured" in stream
+
+
+# ------------------------------------------------------- the analog half
+
+
+def test_the_routing_is_disclosed_before_anything_else():
+    """Which half answers is a guess made from the question's words, so it is
+    the FIRST event on the stream -- disclosure, exactly as the CLI prints
+    it, not a silent decision."""
+    client = make_client(analog_solver=default_analog_solver)
+    login(client)
+
+    stream = events(solve(client))
+    assert stream[0][0] == "routing"
+    assert stream[0][1]["domain"] == "digital"
+    assert stream[0][1]["reason"]
+
+    stream = events(solve(client, ANALOG_QUESTION))
+    assert stream[0][0] == "routing"
+    assert stream[0][1]["domain"] == "analog"
+    assert "ltspice" in stream[0][1]["reason"].lower()
+
+
+def test_an_analog_question_with_no_ltspice_is_refused_naming_the_download():
+    """The product contract: without LTspice, an analog question is REFUSED
+    with a message naming the download -- never answered unverified."""
+    def no_ltspice(question, *, workdir, progress=None):
+        raise FileNotFoundError("LTspice not found. Looked in: F:\\...")
+
+    client = make_client(analog_solver=no_ltspice)
+    login(client)
+    stream = dict(events(solve(client, ANALOG_QUESTION)))
+
+    assert "measured" not in stream and "verified" not in stream
+    assert "error" not in stream
+    refused = stream["refused"]
+    assert refused["download"] is None
+    assert "LTspice" in refused["message"]
+    assert "analog.com" in refused["message"]
+
+
+def test_a_digital_file_error_is_NOT_blamed_on_ltspice():
+    """The FileNotFoundError-means-install-LTspice story belongs to the
+    analog path only; a digital solver losing a file is a plain error."""
+    def solver(question, *, workdir, progress=None):
+        raise FileNotFoundError("logisim went missing mid-run")
+
+    client = make_client(solver)
+    login(client)
+    stream = dict(events(solve(client)))
+
+    assert "refused" not in stream
+    assert "logisim went missing" in stream["error"]["message"]
+
+
+def test_the_measured_event_carries_the_weaker_claim_and_its_evaluator():
+    """What an analog answer is allowed to say, and must.
+
+    The evaluator comes from the MEASUREMENTS. The basis is the intent basis,
+    with its limit -- which has no digital counterpart: meeting a target is
+    not being a good design. And the file note says plainly that the .asc's
+    exact bytes are not what LTspice ran.
+    """
+    client = make_client(analog_solver=default_analog_solver)
+    login(client)
+    measured = dict(events(solve(client, ANALOG_QUESTION)))["measured"]
+
+    assert measured["evaluator"] == "LTspice 26.0.2.1"
+    assert measured["verification"] == "external"
+    assert measured["basis"]["kind"] == "intent"
+    assert "weaker" in measured["basis"]["headline"]
+    assert "meets the intent" in measured["headline"]
+    assert measured["designed_by"] == "mistral/mistral-large-latest"
+    assert "NOT what LTspice ran" in measured["file_note"]
+
+    outcomes = {o["name"]: o for o in measured["outcomes"]}
+    assert outcomes["vout"]["measured"] == 8.87064
+    assert outcomes["vout"]["ok"] and outcomes["vout"]["checked"]
+    # An observation is measured and reported, never counted as a pass.
+    assert outcomes["i_zener"]["checked"] is False
+    assert measured["checked"] == 1 and measured["observations"] == 1
+
+
+def test_zero_checked_targets_reads_as_nothing_checked_not_as_a_pass():
+    """The Q3 lesson: "0 of 5 targets carry a number, and LTspice met every
+    one" reads as a pass over nothing at all. The headline must say that
+    nothing numeric could fail or pass."""
+    def solver(question, *, workdir, progress=None):
+        solution = FakeAnalogSolution(checked=0)
+        solution.write_to(workdir)
+        return solution
+
+    client = make_client(analog_solver=solver)
+    login(client)
+    measured = dict(events(solve(client, ANALOG_QUESTION)))["measured"]
+
+    assert "NOTHING NUMERIC WAS CHECKED" in measured["headline"]
+    assert "meets the intent" not in measured["headline"]
+
+
+def test_an_analog_reading_and_attempts_are_backfilled_too():
+    """The same two non-negotiables as the digital path: the reading, because
+    nothing downstream can prove the intent is the right reading of the
+    question, and the rejected attempts, because a run reporting only its
+    success hides the designs that were wrong."""
+    def solver(question, *, workdir, progress=None):
+        solution = FakeAnalogSolution(
+            failed=[(1, "vout measured 7.1 V against 9 V +/- 2%")])
+        solution.write_to(workdir)
+        return solution
+
+    client = make_client(analog_solver=solver)
+    login(client)
+    stream = events(solve(client, ANALOG_QUESTION))
+    names = [name for name, _ in stream]
+
+    assert names.index("reading") < names.index("measured")
+    reading = dict(stream)["reading"]
+    assert "series voltage regulator" in reading["intent"]
+    attempts = [data for name, data in stream if name == "attempt"]
+    assert attempts and "7.1 V" in attempts[0]["failure"]
+
+
+def test_the_asc_download_is_the_file_named_as_an_asc():
+    client = make_client(analog_solver=default_analog_solver)
+    login(client)
+    measured = dict(events(solve(client, ANALOG_QUESTION)))["measured"]
+
+    downloaded = client.get(f"/api/circuit/{measured['download']}")
+    assert downloaded.status_code == 200
+    assert downloaded.text == "Version 4.1\n"
+    assert ".asc" in downloaded.headers["content-disposition"]
 
 
 def test_every_provider_being_out_of_capacity_is_NOT_reported_as_a_bad_design():
