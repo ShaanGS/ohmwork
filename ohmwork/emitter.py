@@ -225,13 +225,15 @@ def _net_columns(components, comp_pins) -> dict[str, int]:
 
 
 #: Per-rotation label windows for two-terminal parts, so a rotated body
-#: keeps HORIZONTAL, non-colliding text. Format derived from the
-#: hand-drawn fixtures (the R180 pair is verbatim a student's zener):
-#: WINDOW <0=InstName|3=Value> <dx> <dy> <justify> <size>, offsets from
-#: the anchor in the file's frame, "Left" meaning horizontal text.
+#: keeps HORIZONTAL, non-colliding text. Every line is VERBATIM from a
+#: hand-drawn fixture: offsets AND justification live in the SYMBOL'S
+#: frame and rotate with it, so the students' `VTop`/`VBottom` on
+#: R90/R270 parts render horizontal on screen -- and a `Left` written
+#: there renders vertical, which is exactly the mistake the first cut of
+#: this table made and the owner's screenshot caught.
 LABEL_WINDOWS = {
-    "R270": ("WINDOW 0 16 -64 Left 2", "WINDOW 3 16 0 Left 2"),
-    "R90": ("WINDOW 0 -96 -48 Left 2", "WINDOW 3 -96 16 Left 2"),
+    "R270": ("WINDOW 0 32 32 VTop 2", "WINDOW 3 0 32 VBottom 2"),
+    "R90": ("WINDOW 0 0 32 VBottom 2", "WINDOW 3 32 32 VTop 2"),
     "R180": ("WINDOW 0 24 64 Left 2", "WINDOW 3 24 0 Left 2"),
 }
 
@@ -379,7 +381,12 @@ def _flag_spot(route, boxes, taken):
         if ay != by:
             continue
         for x in range(min(ax, bx), max(ax, bx) + 1, 16):
-            score = min([_box_gap((x, ay), box) for box in boxes]
+            # Boxes grow an extra margin here: the label text a body
+            # carries extends past its pins, and a net name that clears
+            # the body but sits on the body's own text still collides.
+            score = min([_box_gap((x, ay), (b[0] - 40, b[1] - 40,
+                                            b[2] + 40, b[3] + 40))
+                         for b in boxes]
                         + [abs(x - tx) + abs(ay - ty) for tx, ty in taken]
                         or [10 ** 6])
             if best_score is None or score > best_score:
