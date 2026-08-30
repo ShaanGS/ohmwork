@@ -17,7 +17,7 @@ import re
 
 import pytest
 
-from ohmwork.emitter import CircuitError, emit
+from ohmwork.emitter import STUB_LEN as STUB, CircuitError, emit
 from ohmwork.symbols import pin_positions
 
 SYMBOL_RE = re.compile(r"^SYMBOL (\S+) (-?\d+) (-?\d+) (R\d+)$")
@@ -215,6 +215,58 @@ def test_layout_coordinates_stay_on_grid_and_non_negative():
             assert x >= 0 and y >= 0
 
 
+# ------------------------------------------------------------------ routing
+#
+# The owner's second requirement, same day, after seeing the label-only
+# layout beside a classmate's hand-drawn file: real wires. The router is
+# deliberately conservative: wires run along the pin line, climb to an
+# overhead lane when the direct line is blocked, and any net with no clean
+# path FALLS BACK to labels -- a labelled net is ugly and correct, a
+# clever route is where silent shorts live. The proof is the geometric
+# round trip: the parser rebuilds connectivity from the wires alone.
+
+
+def normalized(nets):
+    return {net: sorted(pins) for net, pins in nets.items()}
+
+
+def test_routed_output_round_trips_to_the_same_netlist():
+    """THE acceptance test: whatever the router drew, the parser must
+    recover exactly the input connectivity from geometry alone."""
+    from ohmwork.parser import parse_asc
+
+    for circuit in (reference_circuit(), q3_circuit()):
+        recovered = parse_asc(emit(circuit))
+        assert normalized(recovered["nets"]) == normalized(circuit["nets"])
+
+
+def test_the_output_contains_real_wires_beyond_the_stubs():
+    """More wires than pins means actual routing happened."""
+    circuit = q3_circuit()
+    _, wires, _ = parse(emit(circuit).split("\r\n"))
+    pin_count = sum(len(pins) for pins in circuit["nets"].values())
+    assert len(wires) > pin_count
+
+
+def test_a_routed_net_carries_one_label_not_one_per_pin():
+    """A wired net reads as wired: a single name on the wire, like a human
+    labels a node -- not a flag repeated on every pin."""
+    circuit = q3_circuit()
+    _, _, flags = parse(emit(circuit).split("\r\n"))
+    names = list(flags.values())
+    # nlx is a simple two-pin series net: it must be wired, one label.
+    assert names.count("nlx") == 1
+
+
+def test_ground_pins_keep_their_own_ground_symbols():
+    """Net 0 stays one flag per pin: LTspice renders each as the ground
+    triangle, which is exactly how a hand drawing shows ground."""
+    circuit = q3_circuit()
+    _, _, flags = parse(emit(circuit).split("\r\n"))
+    grounds = [pos for pos, name in flags.items() if name == "0"]
+    assert len(grounds) == len(circuit["nets"]["0"])
+
+
 def test_rejects_part_on_a_value_component():
     circuit = reference_circuit()
     circuit["components"][1] = {"ref": "R1", "type": "res", "part": "1.8k"}
@@ -287,40 +339,27 @@ def test_all_coordinates_on_16_grid():
         assert x % 16 == 0 and y % 16 == 0
 
 
-def test_every_pin_has_one_stub_ending_in_the_right_flag():
-    """The core invariant: connectivity is pin -> 16-unit stub -> FLAG."""
+def test_every_pin_has_exactly_one_stub_of_its_own():
+    """The pin-level invariant that survived the router: every pin exits
+    through one 16-unit axis-aligned stub. What used to be asserted here
+    about flags (one per pin) belongs to the pre-routing world; a routed
+    net carries one label, and the connectivity claim now lives in
+    test_routed_output_round_trips_to_the_same_netlist, which is
+    strictly stronger -- the parser proves it from geometry alone."""
     circuit = reference_circuit()
     symbols, wires, flags = parse(emitted_lines())
 
-    # Rebuild pin -> net from the input, keyed by "REF.pin".
-    pin_net = {}
-    for net, pins in circuit["nets"].items():
-        for pin in pins:
-            pin_net[pin] = net
-
-    # Rebuild absolute pin positions from the emitted SYMBOL lines.
     refs = [c["ref"] for c in circuit["components"]]
     all_pins = {}  # (x, y) -> "REF.pin"
     for ref, (sym, anchor, rot) in zip(refs, symbols):
         for name, pos in pin_positions(sym, anchor, rot).items():
             all_pins[pos] = f"{ref}.{name}"
 
-    assert len(wires) == len(all_pins) == len(flags) == 11
-
-    seen_pins = set()
-    for a, b in wires:
-        # Exactly one end of each wire is a pin, the other is a flag.
-        pin_end = a if a in all_pins else b
-        flag_end = b if a in all_pins else a
-        assert pin_end in all_pins, f"wire {a}-{b} touches no pin"
-        assert flag_end in flags, f"wire {a}-{b} has no flag on its free end"
-        # Stub is 16 units long and axis-aligned.
-        assert abs(a[0] - b[0]) + abs(a[1] - b[1]) == 16
-        # Flag carries the net the input assigned to this pin.
-        assert flags[flag_end] == pin_net[all_pins[pin_end]]
-        seen_pins.add(pin_end)
-
-    assert len(seen_pins) == 11, "some pin has no stub of its own"
+    stubs = [w for w in wires
+             if (w[0] in all_pins) != (w[1] in all_pins)
+             and abs(w[0][0] - w[1][0]) + abs(w[0][1] - w[1][1]) == STUB]
+    seen = {a if a in all_pins else b for a, b in stubs}
+    assert seen == set(all_pins), "some pin has no stub of its own"
 
 
 def test_stub_does_not_overlap_symbol_body():

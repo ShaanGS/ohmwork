@@ -203,20 +203,149 @@ def _symbol_lines(components, anchors) -> list[str]:
 
 
 def _stub_and_flag_lines(circuit, anchors) -> list[str]:
+    """Stubs for every pin, then REAL WIRES where a clean path exists.
+
+    The owner's requirement, 2026-08-31, on seeing the label-only layout
+    beside a classmate's hand-drawn file: real wires. The router is
+    deliberately conservative -- a net routes only when its wires touch
+    nothing foreign (no shared endpoints, no endpoint on a foreign span,
+    no collinear overlap; perpendicular CROSSINGS are safe, LTspice does
+    not connect them) -- and any net with no clean path falls back to the
+    old per-pin labels. A labelled net is ugly and correct; a clever
+    route is where silent shorts live. The geometric round trip remains
+    the proof: the parser rebuilds connectivity from these wires alone.
+
+    Ground never routes: one flag per grounded pin renders as the ground
+    triangle under each part, which is how a hand drawing shows it.
+    """
     types = {c["ref"]: c["type"] for c in circuit["components"]}
-    wires, flags = [], []
-    for net, pins in circuit["nets"].items():
-        for entry in pins:
-            ref, pin = entry.split(".", 1)
-            x, y, rot = anchors[ref]
-            positions = pin_positions(types[ref], (x, y), rot)
-            directions = stub_directions(types[ref], rot)
-            px, py = positions[pin]
-            dx, dy = directions[pin]
-            fx, fy = px + dx * STUB_LEN, py + dy * STUB_LEN
-            wires.append(f"WIRE {px} {py} {fx} {fy}")
-            flags.append(f"FLAG {fx} {fy} {net}")
+
+    pin_at, stub_end, owner = {}, {}, {}
+    for ref, ctype in types.items():
+        x, y, rot = anchors[ref]
+        positions = pin_positions(ctype, (x, y), rot)
+        directions = stub_directions(ctype, rot)
+        for name, (px, py) in positions.items():
+            dx, dy = directions[name]
+            entry = f"{ref}.{name}"
+            pin_at[entry] = (px, py)
+            stub_end[entry] = (px + dx * STUB_LEN, py + dy * STUB_LEN)
+            owner[entry] = ref
+
+    wires = [f"WIRE {pin_at[e][0]} {pin_at[e][1]} "
+             f"{stub_end[e][0]} {stub_end[e][1]}" for e in sorted(pin_at)]
+    flags = []
+
+    bodies = _body_boxes(types, pin_at)
+    committed: list[tuple[tuple, tuple]] = []
+
+    ordered = sorted((net for net in circuit["nets"] if net != "0"),
+                     key=lambda n: min(stub_end[e][0]
+                                       for e in circuit["nets"][n]))
+    for net in ordered:
+        entries = circuit["nets"][net]
+        points = [stub_end[e] for e in entries]
+        my_refs = {owner[e] for e in entries}
+        foreign = [p for e, p in pin_at.items() if e not in entries]
+        foreign += [p for e, p in stub_end.items() if e not in entries]
+
+        route = _route_net(points, foreign, committed, bodies, my_refs)
+        if route is None:
+            for e in entries:
+                fx, fy = stub_end[e]
+                flags.append(f"FLAG {fx} {fy} {net}")
+            continue
+        committed.extend(route)
+        for (ax, ay), (bx, by) in route:
+            wires.append(f"WIRE {ax} {ay} {bx} {by}")
+        lx, ly = min(p for seg in route for p in seg)
+        flags.append(f"FLAG {lx} {ly} {net}")
+
+    for e in circuit["nets"].get("0", ()):
+        fx, fy = stub_end[e]
+        flags.append(f"FLAG {fx} {fy} 0")
     return wires + flags
+
+
+# ------------------------------------------------------------------ routing
+
+
+#: Overhead and underfloor lanes a blocked net may climb to, tried in
+#: order after the pin line itself. All grid multiples of 16.
+LANES = (112, 80, 48, 368, 400, 432)
+
+
+def _body_boxes(types, pin_at):
+    """Per-ref bounding box of its pins, inflated to cover the drawing."""
+    boxes = {}
+    for entry, (px, py) in pin_at.items():
+        ref = entry.split(".", 1)[0]
+        x0, y0, x1, y1 = boxes.get(ref, (px, py, px, py))
+        boxes[ref] = (min(x0, px), min(y0, py), max(x1, px), max(y1, py))
+    return {ref: (x0 - 24, y0 - 24, x1 + 24, y1 + 24)
+            for ref, (x0, y0, x1, y1) in boxes.items()}
+
+
+def _route_net(points, foreign, committed, bodies, my_refs):
+    """Wires joining `points`, touching nothing foreign, or None."""
+    points = sorted(set(points))
+    if len(points) < 2:
+        return None
+    xs = {x for x, _ in points}
+    ys = {y for _, y in points}
+
+    candidates = []
+    if len(xs) == 1:
+        x = next(iter(xs))
+        candidates.append([((x, min(ys)), (x, max(ys)))])
+    else:
+        pin_line = max(sorted(ys), key=[y for _, y in points].count)
+        for line_y in (pin_line, *LANES):
+            segs = [((px, py), (px, line_y))
+                    for px, py in points if py != line_y]
+            lo, hi = min(xs), max(xs)
+            if lo != hi:
+                segs.append(((lo, line_y), (hi, line_y)))
+            candidates.append(segs)
+
+    obstacles = [box for ref, box in bodies.items() if ref not in my_refs]
+    for segs in candidates:
+        if all(_clear(seg, foreign, committed, obstacles) for seg in segs):
+            return segs
+    return None
+
+
+def _clear(seg, foreign, committed, obstacles) -> bool:
+    for p in foreign:
+        if _on_seg(p, seg):
+            return False
+    for other in committed:
+        if _segs_touch(seg, other):
+            return False
+    (ax, ay), (bx, by) = seg
+    x0, x1 = sorted((ax, bx))
+    y0, y1 = sorted((ay, by))
+    for ox0, oy0, ox1, oy1 in obstacles:
+        if x0 <= ox1 and ox0 <= x1 and y0 <= oy1 and oy0 <= y1:
+            return False
+    return True
+
+
+def _on_seg(p, seg) -> bool:
+    (px, py), ((ax, ay), (bx, by)) = p, seg
+    if ax == bx and px == ax:
+        return min(ay, by) <= py <= max(ay, by)
+    if ay == by and py == ay:
+        return min(ax, bx) <= px <= max(ax, bx)
+    return False
+
+
+def _segs_touch(a, b) -> bool:
+    """Would LTspice consider these connected? Endpoint contact and
+    collinear overlap connect; a perpendicular crossing does not."""
+    if any(_on_seg(p, b) for p in a) or any(_on_seg(p, a) for p in b):
+        return True
+    return False
 
 
 def _directive_lines(directives) -> list[str]:
