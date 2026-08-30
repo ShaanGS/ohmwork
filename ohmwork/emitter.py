@@ -225,15 +225,31 @@ def _unknown_pin(net, entry, valid_pins) -> str:
 
 
 def _check_net_entries(nets, valid_pins) -> set[str]:
-    used = set()
+    # The two-net message TEACHES the merge rule rather than stating the
+    # fact: it is fed back verbatim to the design loop, and "pin X appears
+    # in more than one net" burned six Q3 attempts across two live runs --
+    # the model keeps writing a junction as two nets touching, when two
+    # nets sharing a pin ARE one net in this schema.
+    owner = {}
     for net, entries in nets.items():
         for entry in entries:
             if entry not in valid_pins:
                 raise CircuitError(_unknown_pin(net, entry, valid_pins))
-            if entry in used:
-                raise CircuitError(f"pin {entry} appears in more than one net")
-            used.add(entry)
-    return used
+            if owner.get(entry) == net:
+                raise CircuitError(
+                    f"pin {entry} is listed twice in net {net!r}: "
+                    f"delete the duplicate entry"
+                )
+            if entry in owner:
+                raise CircuitError(
+                    f"pin {entry} appears in two nets, {owner[entry]!r} and "
+                    f"{net!r}. Two nets sharing a pin are ONE net: a "
+                    f"junction is a single net with several pins, not two "
+                    f"nets touching. Merge them under one name and list "
+                    f"every pin there."
+                )
+            owner[entry] = net
+    return set(owner)
 
 
 def _check_pin_coverage(valid_pins, used_pins) -> None:

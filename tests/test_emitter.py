@@ -301,10 +301,43 @@ def test_rejects_unknown_pin_name():
 
 
 def test_rejects_pin_used_twice():
+    """The rejection must TEACH the merge rule, naming both nets.
+
+    Measured 2026-08-30: `pin C1.b appears in more than one net` came back
+    in every pooled Q3 run -- six rejected attempts across two runs. The
+    model thinks a junction is two nets touching; in this schema two nets
+    sharing a pin ARE one net. The old message stated the fact and nothing
+    else, and the design loop feeds it back verbatim, so the message is the
+    only place the model can learn the rule. Same fix as the Logisim
+    router's two-net port error, which already teaches it.
+    """
     circuit = reference_circuit()
     circuit["nets"]["vout"].append("R1.a")  # already in vin
-    with pytest.raises(CircuitError, match="R1.a"):
+    with pytest.raises(CircuitError) as caught:
         emit(circuit)
+    message = str(caught.value)
+    assert "R1.a" in message
+    assert "'vin'" in message and "'vout'" in message
+    assert "ONE net" in message
+    assert "merge" in message.lower()
+    assert "every pin" in message
+
+
+def test_rejects_pin_listed_twice_in_one_net():
+    """Same pin twice in ONE net is a different mistake and must say so.
+
+    Telling someone to merge a net with itself is instructions that cannot
+    be followed; here the fix is deleting the duplicate entry.
+    """
+    circuit = reference_circuit()
+    circuit["nets"]["vin"].append("R1.a")  # already in vin itself
+    with pytest.raises(CircuitError) as caught:
+        emit(circuit)
+    message = str(caught.value)
+    assert "R1.a" in message
+    assert "twice" in message
+    assert "'vin'" in message
+    assert "merge" not in message.lower()
 
 
 def test_rejects_unconnected_pin():
