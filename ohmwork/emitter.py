@@ -277,6 +277,15 @@ def _check_pin_coverage(valid_pins, used_pins) -> None:
 def _check_net_sizes(nets) -> None:
     for net, entries in nets.items():
         if len(entries) < 2:
+            # A ground-flavoured name says what the model MEANT. Measured
+            # twice on live Q3 runs: single-pin nets named '0_zener' and
+            # '0_dz', each an attempt to say "this pin is grounded".
+            if net != "0" and net.startswith("0"):
+                raise CircuitError(
+                    f"net {net!r} has only {len(entries)} pin(s): floating "
+                    f"node. A net named like ground is not ground -- the "
+                    f"ground net is named exactly '0', and every grounded "
+                    f"pin belongs in it directly.")
             raise CircuitError(
                 f"net {net!r} has only {len(entries)} pin(s): floating node"
             )

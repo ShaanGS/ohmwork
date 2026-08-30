@@ -154,10 +154,12 @@ RULES:
    resistor looks like every other resistor, so nothing downstream can tell
    which one is the load unless it is named.
 
-3. NETS. Every pin of every component appears on exactly one net, written
-   "REF.pin". There MUST be a net named "0": that is ground, and SPICE has no
-   reference without it. Use EXACTLY these node names where the intent names
-   them: {nets}
+3. NETS. A net is a NODE: every pin that touches one junction, listed once
+   under one name, written "REF.pin". Never write two nets for one junction
+   and never one net per pin. There MUST be a net named exactly "0": that is
+   ground, the only ground, and every grounded pin goes in it directly --
+   never in a net named "0_something". Use EXACTLY these node names where
+   the intent names them: {nets}
 
 4. VALUES. res, cap, ind and a DC voltage source carry "value" as a SPICE
    string -- "1.8k", "470u", "1m", "15". Never a bare number with a unit
@@ -186,9 +188,10 @@ RULES:
 
 9. A BRIDGE RECTIFIER is four diodes and a FLOATING AC source: V1 sits
    between two nodes and NEITHER is ground. Grounding an AC terminal shorts
-   half the bridge. The working pattern, exactly:
-     "ac1":   ["V1.+", "D1.anode", "D3.cathode"]
-     "ac2":   ["V1.-", "D2.anode", "D4.cathode"]
+   half the bridge. The working pattern (rename the nets to the intent's
+   node names where it names them -- each of these is still ONE net):
+     "ac_a":  ["V1.+", "D1.anode", "D3.cathode"]
+     "ac_b":  ["V1.-", "D2.anode", "D4.cathode"]
      "vrect": ["D1.cathode", "D2.cathode", ...]
      "0":     ["D3.anode", "D4.anode", ...]
 

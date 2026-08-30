@@ -354,6 +354,21 @@ def test_rejects_net_referencing_unknown_component():
         emit(circuit)
 
 
+def test_a_ground_flavoured_net_name_is_told_ground_is_named_0():
+    """Measured twice, runs 8 and 9 of Q3: the model wrote single-pin nets
+    named '0_zener' and '0_dz' -- clearly meaning "this pin is grounded" --
+    and was told only "floating node", which does not say that ground is
+    spelled exactly '0'."""
+    circuit = reference_circuit()
+    circuit["nets"]["0"].remove("RL.b")
+    circuit["nets"]["0_rl"] = ["RL.b"]
+    with pytest.raises(CircuitError) as caught:
+        emit(circuit)
+    message = str(caught.value)
+    assert "'0_rl'" in message
+    assert "named exactly '0'" in message
+
+
 def test_a_net_name_written_as_a_pin_teaches_that_nets_do_not_nest():
     """Measured on the eighth Q3 run, which DIED on this: the model twice
     wrote the ground net "0" as a member of net 'zener_anode' -- trying to
