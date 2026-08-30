@@ -25,7 +25,11 @@ __pycache__/
 # Build artefacts from `pip install -e .`
 *.egg-info/
 
-# CLAUDE.md is the WORKING FILE: session state, open questions, decisions in
+# CLAUDE.md
+# AGENTS.md is the same document under the name Codex looks for. It is
+# ignored for the same reason: the working notes are private, and
+# ARCHITECTURE.md is the public account of what they contain.
+AGENTS.md is the WORKING FILE: session state, open questions, decisions in
 # progress, what to do next. It is not documentation and it is not the story
 # a reader of this repo wants. Its durable content -- the derived format
 # facts, the incident table, the verification limits -- lives in
