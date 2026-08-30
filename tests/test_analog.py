@@ -240,6 +240,32 @@ def test_a_missed_target_is_fed_back_and_the_design_retried(tmp_path):
     assert "6.2" in retry_prompt and "vout_nominal" in retry_prompt
 
 
+def test_a_malformed_reply_spends_an_attempt_not_the_run(tmp_path):
+    """MEASURED 2026-08-30 on a live Q3 run: the fourth design call came
+    back as Groq's `json_validate_failed` and the run died as "the model
+    could not be reached", losing three attempts of real progress. The
+    model answered and the answer was garbage: a spent attempt."""
+    from ohmwork.llm import MalformedReply
+
+    class Flubbing(FakeProvider):
+        def complete(self, prompt, **kwargs):
+            if self.replies and isinstance(self.replies[0], Exception):
+                self.prompts.append(prompt)
+                raise self.replies.pop(0)
+            return super().complete(prompt, **kwargs)
+
+    provider = Flubbing(
+        [INTENT_JSON, MalformedReply("fake produced a reply that failed "
+                                     "the provider's JSON validation"),
+         json.dumps(CIRCUIT)])
+    solution = solve(provider, workdir=tmp_path)
+
+    assert solution.comparison.agrees
+    assert solution.attempts == 2
+    assert solution.failed_attempts
+    assert "one valid JSON object" in provider.prompts[-1]
+
+
 def test_it_never_returns_a_solution_that_did_not_verify(tmp_path):
     """The only failure that would really matter. A circuit whose numbers
     disagree with the question is precisely what this project exists to stop

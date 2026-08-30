@@ -313,6 +313,57 @@ def test_a_gate_rejection_is_fed_back_verbatim(tmp_path):
     assert "resistance" in provider.prompts[-1]
 
 
+class FlubbingProvider(FakeProvider):
+    """A queued Exception is RAISED instead of returned as a reply."""
+
+    def complete(self, prompt, **kwargs):
+        if self.replies and isinstance(self.replies[0], Exception):
+            self.prompts.append(prompt)
+            raise self.replies.pop(0)
+        return super().complete(prompt, **kwargs)
+
+
+def test_a_malformed_reply_spends_an_attempt_not_the_run(tmp_path):
+    """MEASURED 2026-08-30: attempt 4 of a Q3 run died as "the model could
+    not be reached" because Groq refused the model's own invalid JSON
+    (`json_validate_failed`), throwing away three attempts of progress.
+    The model answered and the answer was garbage -- a spent attempt, and
+    the next attempt is told to emit one valid JSON object."""
+    from ohmwork.llm import MalformedReply
+
+    provider = FlubbingProvider(
+        [SPEC_JSON, MalformedReply("fake produced a reply that failed the "
+                                   "provider's JSON validation"),
+         design_reply()])
+    solution = solve(QUESTION, provider=provider,
+                     backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                     workdir=tmp_path)
+
+    assert solution.comparison.agrees
+    assert solution.attempts == 2
+    assert solution.failed_attempts
+    assert "one valid JSON object" in provider.prompts[-1]
+
+
+def test_a_malformed_SPEC_reply_is_retried_then_given_up_on(tmp_path):
+    """The spec call flubbing once costs nothing; flubbing endlessly must
+    end as an error naming what kept failing, not spin."""
+    from ohmwork.llm import MalformedReply
+
+    once = FlubbingProvider([MalformedReply("flub"), SPEC_JSON,
+                             design_reply()])
+    solution = solve(QUESTION, provider=once,
+                     backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                     workdir=tmp_path)
+    assert solution.comparison.agrees
+
+    always = FlubbingProvider([MalformedReply("flub")] * 5)
+    with pytest.raises(DesignError, match="invalid JSON"):
+        solve(QUESTION, provider=always,
+              backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+              workdir=tmp_path)
+
+
 def test_a_circuit_that_disagrees_with_the_spec_is_retried_with_the_rows(
         tmp_path):
     """The heart of it. The circuit is valid, emits, and Logisim evaluates it

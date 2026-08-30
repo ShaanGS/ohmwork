@@ -192,6 +192,29 @@ def test_an_ordinary_failure_is_not_dressed_up_as_a_bad_model():
     assert "rate limit" in str(excinfo.value)
 
 
+def test_a_json_validation_refusal_arrives_as_MalformedReply():
+    """The model ANSWERED and the answer was garbage. Not a transport
+    failure, not a broken member, not a stale model id.
+
+    MEASURED 2026-08-30, on the fourth attempt of a Q3 run: Groq refused
+    the model's own output with `json_validate_failed` and an empty
+    failed_generation, and the whole run died as "the model could not be
+    reached" -- three attempts of real progress lost to one stochastic
+    flub. The design loops treat MalformedReply as a spent attempt, so
+    the classification is what keeps a run alive.
+    """
+    provider = groq(raise_error=Exception(
+        "Error code: 400 - {'error': {'message': \"Failed to validate "
+        "JSON. Please adjust your prompt.\", 'type': "
+        "'invalid_request_error', 'code': 'json_validate_failed', "
+        "'failed_generation': ''}}"))
+    with pytest.raises(llm.MalformedReply) as excinfo:
+        provider.complete("hello")
+    message = str(excinfo.value)
+    assert "request itself was fine" in message
+    assert "OHMWORK_LLM_MODEL" not in message
+
+
 def test_a_groq_rate_limit_arrives_as_RateLimited_so_a_pool_can_move_on():
     """The pool tells "slow down" from "this member is broken" by TYPE.
 

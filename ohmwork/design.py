@@ -38,7 +38,7 @@ from pathlib import Path
 
 from ohmwork.domain import (ANALOG_ADVICE, DomainError, check_digital,
                             check_spec_has_logic, named_parts)
-from ohmwork.llm import LLMError, PoolExhausted
+from ohmwork.llm import LLMError, MalformedReply, PoolExhausted
 from ohmwork.logisim_backend import DigitalEvaluationError
 from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.partcheck import (WiringError, derive_wiring, name_conflicts,
@@ -612,6 +612,7 @@ def _ask_until_it_fits(provider, prompt, budget, parse, what):
     can share. Feeding "your JSON is malformed" back to a model whose JSON
     was fine until the budget ran out spends a retry teaching it nothing.
     """
+    malformed_left = 2
     while True:
         try:
             reply = provider.complete(prompt, max_tokens=budget,
@@ -621,6 +622,16 @@ def _ask_until_it_fits(provider, prompt, budget, parse, what):
             # circuit was ever designed; wrapping this as a design failure
             # would tell someone to rewrite a question that was fine.
             raise
+        except MalformedReply as exc:
+            # The model answered and the answer was garbage -- stochastic,
+            # so worth asking again, but bounded: a model that flubs JSON
+            # three times running is not going to write a spec either.
+            malformed_left -= 1
+            if malformed_left < 0:
+                raise DesignError(
+                    f"the model kept producing invalid JSON for {what}: "
+                    f"{exc}") from exc
+            continue
         except LLMError as exc:
             raise DesignError(f"the model could not be reached: {exc}") from exc
         try:
@@ -760,6 +771,18 @@ def solve(question: str, *, provider=None, backend=None, workdir,
         try:
             reply = provider.complete(prompt, max_tokens=budget,
                                       json_object=True)
+        except MalformedReply as exc:
+            # The model answered and the answer was garbage. A spent attempt,
+            # never a dead run: the run this rule comes from lost three
+            # attempts of real progress to one stochastic JSON flub.
+            failure = str(exc)
+            history.append((index, failure))
+            emit("attempt", {"index": index, "status": "rejected",
+                             "failure": failure})
+            last_error = ("your previous reply was discarded by the provider "
+                          "because it was not valid JSON. Reply with exactly "
+                          "one valid JSON object and nothing else.")
+            continue
         except LLMError as exc:
             # A provider failure is not a design failure. It must not be fed
             # back to the model as though its circuit were wrong.

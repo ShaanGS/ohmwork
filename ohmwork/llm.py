@@ -312,6 +312,15 @@ class GroqProvider:
                 for phrase in ("rate limit", "too many requests")):
             return RateLimited(f"Groq is rate limiting: {text}",
                                retry_after=_retry_after({}, text))
+        # The model's OWN reply failed the provider's JSON validation. That
+        # is not a transport failure and not a broken member: the model
+        # answered, the answer was garbage, and asking again may well
+        # succeed -- generation is stochastic where the transport is not.
+        if "json_validate_failed" in lowered:
+            return MalformedReply(
+                f"{self.name}/{self.model} produced a reply that failed the "
+                f"provider's JSON validation and was discarded server-side. "
+                f"The request itself was fine. {text[:300]}")
         looks_like_bad_model = (
             getattr(error, "status_code", None) == 404
             or "model" in text.lower() and (
@@ -485,6 +494,19 @@ class PoolExhausted(LLMError):
         #: [(member name, plain-English reason)], for a caller that renders
         #: this rather than printing it.
         self.members = list(members)
+
+
+class MalformedReply(LLMError):
+    """The model ANSWERED, and the answer was unusable.
+
+    MEASURED 2026-08-30, on the fourth attempt of a Q3 run: Groq's
+    server-side JSON validator refused the model's own output with
+    `json_validate_failed` and an EMPTY failed_generation, and the whole
+    run died as "the model could not be reached" -- three real attempts of
+    progress thrown away over one stochastic flub. Its own class because a
+    design loop must tell "nobody could be asked" (fatal) from "the reply
+    was garbage" (a spent attempt, worth retrying).
+    """
 
 
 class RateLimited(LLMError):
@@ -705,6 +727,13 @@ class OpenAICompatibleProvider:
                 f"{text[:160]}", retry_after=TRANSIENT_COOLDOWN)
 
         lowered = text.lower()
+        # Same classification as GroqProvider: the MODEL's reply failed the
+        # provider's JSON validation. A spent attempt, not a dead member.
+        if "json_validate_failed" in lowered:
+            return MalformedReply(
+                f"{self.name}/{self.model} produced a reply that failed the "
+                f"provider's JSON validation and was discarded server-side. "
+                f"The request itself was fine. {text[:300]}")
         stale_model = status in (400, 404) and "model" in lowered and any(
             phrase in lowered for phrase in
             ("not found", "does not exist", "decommission", "invalid model",

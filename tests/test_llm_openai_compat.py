@@ -161,6 +161,25 @@ def test_a_DAILY_quota_is_not_treated_as_a_rate_limit():
     assert "DAILY" in str(caught.value)
 
 
+def test_a_json_validation_refusal_arrives_as_MalformedReply():
+    """Same classification as GroqProvider, same reason: the MODEL's reply
+    failed the provider's validation, and a design loop must be able to
+    tell that from a dead member or a stale model id."""
+    body = json.dumps({"error": {
+        "message": "Failed to validate JSON. Please adjust your prompt.",
+        "type": "invalid_request_error",
+        "code": "json_validate_failed", "failed_generation": ""}})
+    transport = FakeTransport((400, {}, body))
+    provider = make(transport=transport)
+
+    with pytest.raises(llm.MalformedReply) as caught:
+        provider.complete("hi", json_object=True)
+
+    message = str(caught.value)
+    assert "request itself was fine" in message
+    assert "OHMWORK_LLM_MODEL" not in message
+
+
 def test_a_5xx_is_transient_and_the_member_is_only_briefly_set_aside():
     """Gemini answered "currently experiencing high demand ... usually
     temporary" with a 503. Treating that as a broken member retires one that

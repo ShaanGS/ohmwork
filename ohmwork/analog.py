@@ -51,7 +51,7 @@ from ohmwork.design import (DEFAULT_ATTEMPTS, RETRY_BLOCK, DesignError,
 from ohmwork.domain import check_analog
 from ohmwork.intent import (IntentError, build_analog_plan, compare_targets,
                             intent_basis, parse_intent_reply)
-from ohmwork.llm import LLMError, PoolExhausted
+from ohmwork.llm import LLMError, MalformedReply, PoolExhausted
 
 #: The intent call's budget. Smaller than the digital spec's: an intent is a
 #: handful of targets, not seven sum-of-products expressions.
@@ -472,6 +472,18 @@ def solve_analog(question: str, *, provider=None, backend=None, workdir,
                                       json_object=True)
         except PoolExhausted:
             raise
+        except MalformedReply as exc:
+            # The model answered and the answer was garbage. A spent attempt,
+            # never a dead run: the run this rule comes from lost three
+            # attempts of real progress to one stochastic JSON flub.
+            failure = str(exc)
+            history.append((index, failure))
+            emit("attempt", {"index": index, "status": "rejected",
+                             "failure": failure})
+            last_error = ("your previous reply was discarded by the provider "
+                          "because it was not valid JSON. Reply with exactly "
+                          "one valid JSON object and nothing else.")
+            continue
         except LLMError as exc:
             # A provider failure is not a design failure, and must not be fed
             # back to the model as though its circuit were wrong.
