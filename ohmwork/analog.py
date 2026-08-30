@@ -110,6 +110,11 @@ RULES:
    transformer secondary). Choose short names matching
    [A-Za-z][A-Za-z0-9_]* -- vin, vb, vout, vrect, vfilt. THESE ARE
    AUTHORITATIVE: the circuit will be required to use exactly them.
+   An AC source DRIVING A BRIDGE RECTIFIER floats -- neither terminal is
+   ground -- so a target on the SOURCE's own voltage (its RMS, its
+   waveform) MUST be measured between its two nodes, "net" AND "net2".
+   Measured one node to ground it reads a different, smaller number, and a
+   CORRECT circuit fails the check.
    A CURRENT target names a "role" instead, never a net. "The load current
    waveform" is {{"kind": "current_waveform", "role": "load"}} -- NOT a
    "waveform" target on the load's node, which would measure a voltage and

@@ -404,7 +404,12 @@ class AnthropicProvider:
         try:
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=max_tokens,
+                # Adaptive thinking BILLS AS OUTPUT and shares max_tokens on
+                # this API, so a budget sized for the answer alone starves
+                # it: three of six attempts on the first paid Q3 run came
+                # back EMPTY, the whole 5000 spent thinking. Only tokens
+                # actually produced are billed, so the floor costs nothing.
+                max_tokens=max(max_tokens, 16000),
                 thinking={"type": "adaptive"},
                 messages=[{"role": "user", "content": content}],
             )
@@ -415,6 +420,12 @@ class AnthropicProvider:
             raise LLMError("the model declined this request")
         text = "".join(block.text for block in message.content
                        if block.type == "text").strip()
+        if not text:
+            # A spent attempt, not a dead run -- same standing as a reply
+            # the provider's validator discarded.
+            raise MalformedReply(
+                f"{self.name}/{self.model} returned no text. Thinking "
+                f"shares max_tokens on this API and can consume all of it.")
         return Reply(text=text, model=self.model, provider=self.name)
 
     def _explain(self, error: Exception) -> LLMError:

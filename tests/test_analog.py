@@ -203,6 +203,19 @@ def test_the_plan_is_DERIVED_and_never_asked_for(tmp_path):
         assert word not in design_prompt
 
 
+def test_the_intent_prompt_says_a_bridge_source_is_measured_across_itself():
+    """Measured on the first paid Q3 run (claude-opus-5): the intent put a
+    12 V RMS check on V(vin), one node to ground -- and even RECORDED the
+    choice in its notes -- while every design correctly floated the bridge
+    source. Three sound circuits failed at 9.7 V RMS against a measurement
+    no correct bridge circuit can satisfy. The design loop cannot revise an
+    intent, so the rule has to reach the intent writer."""
+    from ohmwork.analog import INTENT_PROMPT
+    assert "DRIVING A BRIDGE RECTIFIER floats" in INTENT_PROMPT
+    assert '"net" AND "net2"' in INTENT_PROMPT
+    assert "CORRECT circuit fails the check" in INTENT_PROMPT
+
+
 def test_the_design_prompt_teaches_the_two_measured_killers(tmp_path):
     """Seven Q3 runs across two vendors (gpt-oss and mistral, 2026-08-30)
     failed the same two ways: a bridge with a grounded AC terminal (vrect

@@ -230,6 +230,26 @@ def test_a_groq_rate_limit_arrives_as_RateLimited_so_a_pool_can_move_on():
     assert excinfo.value.retry_after == pytest.approx(8.5)
 
 
+# --------------------------------------------- Anthropic thinking headroom
+
+
+def test_anthropic_requests_headroom_for_thinking():
+    """Thinking bills as output and SHARES max_tokens on this API. Measured
+    on the first paid Q3 run: three of six design calls returned EMPTY, the
+    whole 5000-token budget spent thinking. The floor costs nothing -- only
+    tokens actually produced are billed."""
+    provider = anthropic()
+    provider.complete("design something", max_tokens=5000)
+    assert provider.client.calls[0]["max_tokens"] == 16000
+
+
+def test_an_empty_anthropic_reply_is_a_MalformedReply():
+    """A spent attempt, never a dead run -- and never passed upward as an
+    empty string for a parser to blame on 'no JSON object'."""
+    with pytest.raises(llm.MalformedReply, match="no text"):
+        anthropic(reply="").complete("hello")
+
+
 # ----------------------------------- Anthropic failures are classified too
 
 
