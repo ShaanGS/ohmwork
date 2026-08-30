@@ -51,7 +51,8 @@ from ohmwork.design import (DEFAULT_ATTEMPTS, RETRY_BLOCK, DesignError,
 from ohmwork.domain import check_analog
 from ohmwork.intent import (IntentError, build_analog_plan, compare_targets,
                             intent_basis, parse_intent_reply)
-from ohmwork.llm import LLMError, MalformedReply, PoolExhausted
+from ohmwork.llm import (LLMError, MalformedReply, PoolExhausted,
+                         TransientNetworkError)
 
 #: The intent call's budget. Smaller than the digital spec's: an intent is a
 #: handful of targets, not seven sum-of-products expressions.
@@ -490,6 +491,15 @@ def solve_analog(question: str, *, provider=None, backend=None, workdir,
                                       json_object=True)
         except PoolExhausted:
             raise
+        except TransientNetworkError as exc:
+            # The wire failed, not the design. Spend the attempt and ask
+            # again -- and leave last_error alone: the model never saw this
+            # prompt, so there is nothing new to feed back.
+            failure = str(exc)
+            history.append((index, failure))
+            emit("attempt", {"index": index, "status": "rejected",
+                             "failure": failure})
+            continue
         except MalformedReply as exc:
             # The model answered and the answer was garbage. A spent attempt,
             # never a dead run: the run this rule comes from lost three

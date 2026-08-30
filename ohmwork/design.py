@@ -38,7 +38,8 @@ from pathlib import Path
 
 from ohmwork.domain import (ANALOG_ADVICE, DomainError, check_digital,
                             check_spec_has_logic, named_parts)
-from ohmwork.llm import LLMError, MalformedReply, PoolExhausted
+from ohmwork.llm import (LLMError, MalformedReply, PoolExhausted,
+                         TransientNetworkError)
 from ohmwork.logisim_backend import DigitalEvaluationError
 from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.partcheck import (WiringError, derive_wiring, name_conflicts,
@@ -613,6 +614,7 @@ def _ask_until_it_fits(provider, prompt, budget, parse, what):
     was fine until the budget ran out spends a retry teaching it nothing.
     """
     malformed_left = 2
+    transient_left = 2
     while True:
         try:
             reply = provider.complete(prompt, max_tokens=budget,
@@ -622,6 +624,14 @@ def _ask_until_it_fits(provider, prompt, budget, parse, what):
             # circuit was ever designed; wrapping this as a design failure
             # would tell someone to rewrite a question that was fine.
             raise
+        except TransientNetworkError as exc:
+            # The wire failed once; ask again, bounded.
+            transient_left -= 1
+            if transient_left < 0:
+                raise DesignError(
+                    f"the model could not be reached for {what}: the "
+                    f"network kept failing. {exc}") from exc
+            continue
         except MalformedReply as exc:
             # The model answered and the answer was garbage -- stochastic,
             # so worth asking again, but bounded: a model that flubs JSON
@@ -771,6 +781,15 @@ def solve(question: str, *, provider=None, backend=None, workdir,
         try:
             reply = provider.complete(prompt, max_tokens=budget,
                                       json_object=True)
+        except TransientNetworkError as exc:
+            # The wire failed, not the design. Spend the attempt and ask
+            # again -- and leave last_error alone: the model never saw this
+            # prompt, so there is nothing new to feed back.
+            failure = str(exc)
+            history.append((index, failure))
+            emit("attempt", {"index": index, "status": "rejected",
+                             "failure": failure})
+            continue
         except MalformedReply as exc:
             # The model answered and the answer was garbage. A spent attempt,
             # never a dead run: the run this rule comes from lost three

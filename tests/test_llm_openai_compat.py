@@ -161,6 +161,22 @@ def test_a_DAILY_quota_is_not_treated_as_a_rate_limit():
     assert "DAILY" in str(caught.value)
 
 
+def test_a_network_timeout_arrives_as_TransientNetworkError(monkeypatch):
+    """MEASURED three times across sessions (mistral 2026-08-26, gemini
+    2026-08-31): a 120 s read timeout on one design call surfaced as a bare
+    LLMError and killed the whole run as "the model could not be reached".
+    The wire being slow once is not the run being over -- the design loops
+    treat this type as a spent attempt."""
+    import urllib.request
+
+    def boom(request, timeout):
+        raise TimeoutError("The read operation timed out")
+
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    with pytest.raises(llm.TransientNetworkError):
+        llm._urllib_transport("POST", "https://x.invalid/chat", {}, b"{}")
+
+
 def test_a_json_validation_refusal_arrives_as_MalformedReply():
     """Same classification as GroqProvider, same reason: the MODEL's reply
     failed the provider's validation, and a design loop must be able to

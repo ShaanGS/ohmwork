@@ -312,6 +312,13 @@ class GroqProvider:
                 for phrase in ("rate limit", "too many requests")):
             return RateLimited(f"Groq is rate limiting: {text}",
                                retry_after=_retry_after({}, text))
+        # The wire failed, not the account: the SDK's timeout and connection
+        # errors are the same fact _urllib_transport classifies for the
+        # HTTP members, and a design loop retries them as spent attempts.
+        kind = type(error).__name__.lower()
+        if "timeout" in kind or "connection" in kind or "timed out" in lowered:
+            return TransientNetworkError(
+                f"{self.name}: {type(error).__name__}: {error}")
         # The model's OWN reply failed the provider's JSON validation. That
         # is not a transport failure and not a broken member: the model
         # answered, the answer was garbage, and asking again may well
@@ -496,6 +503,18 @@ class PoolExhausted(LLMError):
         self.members = list(members)
 
 
+class TransientNetworkError(LLMError):
+    """The wire failed, not the account and not the model.
+
+    A read timeout or a dropped connection on ONE call. MEASURED killing
+    whole runs twice (mistral 2026-08-26, gemini 2026-08-31): the design
+    loop's first slow call surfaced as a bare LLMError and the run died as
+    "the model could not be reached" with the reading already printed.
+    Retrying the same call is the correct response, so the loops treat this
+    as a spent attempt, exactly like MalformedReply.
+    """
+
+
 class MalformedReply(LLMError):
     """The model ANSWERED, and the answer was unusable.
 
@@ -572,7 +591,10 @@ def _urllib_transport(method, url, headers, body):
                 {k.lower(): v for k, v in (e.headers or {}).items()},
                 e.read().decode("utf-8", "replace"))
     except Exception as e:                              # noqa: BLE001
-        raise LLMError(f"{url}: {type(e).__name__}: {e}") from None
+        # Anything reaching this catch is transport-level: HTTP errors were
+        # returned as data above, so what is left is timeouts, DNS, resets.
+        raise TransientNetworkError(
+            f"{url}: {type(e).__name__}: {e}") from None
 
 
 def _retry_after(headers: dict, text: str) -> float:

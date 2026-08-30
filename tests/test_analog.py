@@ -283,6 +283,29 @@ def test_a_malformed_reply_spends_an_attempt_not_the_run(tmp_path):
     assert "one valid JSON object" in provider.prompts[-1]
 
 
+def test_a_network_timeout_spends_an_attempt_not_the_run(tmp_path):
+    """The analog twin of the digital test: gemini's 2026-08-31 Q3 run died
+    on one read timeout AFTER printing an excellent reading."""
+    from ohmwork.llm import TransientNetworkError
+
+    class Flubbing(FakeProvider):
+        def complete(self, prompt, **kwargs):
+            if self.replies and isinstance(self.replies[0], Exception):
+                self.prompts.append(prompt)
+                raise self.replies.pop(0)
+            return super().complete(prompt, **kwargs)
+
+    provider = Flubbing(
+        [INTENT_JSON, TransientNetworkError("https://x: TimeoutError"),
+         json.dumps(CIRCUIT)])
+    solution = solve(provider, workdir=tmp_path)
+
+    assert solution.comparison.agrees
+    assert solution.attempts == 2
+    assert solution.failed_attempts
+    assert "one valid JSON object" not in provider.prompts[-1]
+
+
 def test_it_never_returns_a_solution_that_did_not_verify(tmp_path):
     """The only failure that would really matter. A circuit whose numbers
     disagree with the question is precisely what this project exists to stop

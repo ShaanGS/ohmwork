@@ -345,6 +345,27 @@ def test_a_malformed_reply_spends_an_attempt_not_the_run(tmp_path):
     assert "one valid JSON object" in provider.prompts[-1]
 
 
+def test_a_network_timeout_spends_an_attempt_not_the_run(tmp_path):
+    """MEASURED killing runs twice (mistral 2026-08-26, gemini 2026-08-31):
+    one 120 s read timeout on a design call ended the whole run as "the
+    model could not be reached". The wire failing once is a spent attempt
+    -- and unlike a malformed reply, nothing new is fed back, because the
+    model never saw the prompt."""
+    from ohmwork.llm import TransientNetworkError
+
+    provider = FlubbingProvider(
+        [SPEC_JSON, TransientNetworkError("https://x: TimeoutError"),
+         design_reply()])
+    solution = solve(QUESTION, provider=provider,
+                     backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                     workdir=tmp_path)
+
+    assert solution.comparison.agrees
+    assert solution.attempts == 2
+    assert solution.failed_attempts
+    assert "one valid JSON object" not in provider.prompts[-1]
+
+
 def test_a_malformed_SPEC_reply_is_retried_then_given_up_on(tmp_path):
     """The spec call flubbing once costs nothing; flubbing endlessly must
     end as an error naming what kept failing, not spin."""
@@ -359,6 +380,23 @@ def test_a_malformed_SPEC_reply_is_retried_then_given_up_on(tmp_path):
 
     always = FlubbingProvider([MalformedReply("flub")] * 5)
     with pytest.raises(DesignError, match="invalid JSON"):
+        solve(QUESTION, provider=always,
+              backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+              workdir=tmp_path)
+
+
+def test_an_unreachable_network_on_the_SPEC_call_gives_up_bounded(tmp_path):
+    from ohmwork.llm import TransientNetworkError
+
+    once = FlubbingProvider([TransientNetworkError("t"), SPEC_JSON,
+                             design_reply()])
+    solution = solve(QUESTION, provider=once,
+                     backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                     workdir=tmp_path)
+    assert solution.comparison.agrees
+
+    always = FlubbingProvider([TransientNetworkError("t")] * 5)
+    with pytest.raises(DesignError, match="network kept failing"):
         solve(QUESTION, provider=always,
               backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
               workdir=tmp_path)
