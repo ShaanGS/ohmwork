@@ -206,14 +206,28 @@ def _all_pins(components) -> set[str]:
     return pins
 
 
-def _unknown_pin(net, entry, valid_pins) -> str:
+def _unknown_pin(net, entry, valid_pins, nets) -> str:
     """Say which pins the component DOES have, not merely that this is wrong.
 
     MEASURED on a live analog solve: a model wrote "Q1.base" for a transistor
     whose pins are C, B and E, and the rejection told it the pin did not
     exist without saying what would. That is a whole retry spent guessing at
     a vocabulary the message was already holding.
+
+    And a NET name written where a pin belongs gets the fact it is missing,
+    not just the fact it is wrong. MEASURED on the eighth Q3 run, which DIED
+    on it: the model twice wrote the ground net "0" inside another net --
+    trying to say "this net is grounded" -- was told only "no component
+    named 0", repeated itself, and the identical-failure stop ended the run.
     """
+    if entry == "0" or entry in nets:
+        if entry == "0":
+            return (f"net {net!r} lists {entry!r}, which is a NET -- ground "
+                    f"-- not a pin. Nets do not nest: to ground these pins, "
+                    f"list every one of them in net '0' directly.")
+        return (f"net {net!r} lists {entry!r}, which is a NET, not a pin. "
+                f"Nets do not nest: if these pins share one node, merge the "
+                f"two nets under one name and list every pin there.")
     ref = entry.split(".", 1)[0]
     theirs = sorted(pin.split(".", 1)[1] for pin in valid_pins
                     if pin.startswith(f"{ref}."))
@@ -234,7 +248,7 @@ def _check_net_entries(nets, valid_pins) -> set[str]:
     for net, entries in nets.items():
         for entry in entries:
             if entry not in valid_pins:
-                raise CircuitError(_unknown_pin(net, entry, valid_pins))
+                raise CircuitError(_unknown_pin(net, entry, valid_pins, nets))
             if owner.get(entry) == net:
                 raise CircuitError(
                     f"pin {entry} is listed twice in net {net!r}: "

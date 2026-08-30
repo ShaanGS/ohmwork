@@ -352,3 +352,31 @@ def test_rejects_net_referencing_unknown_component():
     circuit["nets"]["vin"].append("R9.a")
     with pytest.raises(CircuitError, match="R9"):
         emit(circuit)
+
+
+def test_a_net_name_written_as_a_pin_teaches_that_nets_do_not_nest():
+    """Measured on the eighth Q3 run, which DIED on this: the model twice
+    wrote the ground net "0" as a member of net 'zener_anode' -- trying to
+    say "this net is grounded" -- was told only "no component named 0",
+    repeated itself, and the identical-failure stop ended the run. The
+    reader can see what it meant; the message must say what to do."""
+    circuit = reference_circuit()
+    circuit["nets"]["vout"].append("0")
+    with pytest.raises(CircuitError) as caught:
+        emit(circuit)
+    message = str(caught.value)
+    assert "is a NET" in message and "not a pin" in message
+    assert "'0'" in message and "'vout'" in message
+    assert "do not nest" in message
+
+
+def test_a_non_ground_net_name_written_as_a_pin_says_merge():
+    """The same mistake with an ordinary net: attempt 3 of the same run
+    wrote net 'RL_a' referencing 'vfilt', a net this circuit had."""
+    circuit = reference_circuit()
+    circuit["nets"]["vin"].append("vout")
+    with pytest.raises(CircuitError) as caught:
+        emit(circuit)
+    message = str(caught.value)
+    assert "is a NET" in message and "not a pin" in message
+    assert "merge" in message.lower()
