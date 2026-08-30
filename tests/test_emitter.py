@@ -293,6 +293,33 @@ def test_every_q3_net_routes_with_wires():
         assert names.count(net) == 1, f"net {net} fell back to labels"
 
 
+def test_net_labels_keep_clear_of_every_body():
+    """The owner's screenshot: 'vout' printed through 'DZ1'. A net's name
+    must sit at least a text-height away from every component's body
+    box, using vertical wire runs when the horizontals are hemmed in."""
+    for circuit in (reference_circuit(), q3_circuit()):
+        symbols, _, flags = parse(emit(circuit).split("\r\n"))
+        boxes = []
+        for sym, anchor, rot in symbols:
+            pins = list(pin_positions(sym, anchor, rot).values())
+            xs = [p[0] for p in pins]
+            ys = [p[1] for p in pins]
+            boxes.append((min(xs) - 24, min(ys) - 24,
+                          max(xs) + 24, max(ys) + 24))
+        for (fx, fy), name in flags.items():
+            if name == "0":
+                continue
+            for x0, y0, x1, y1 in boxes:
+                gap = (max(x0 - fx, 0, fx - x1)
+                       + max(y0 - fy, 0, fy - y1))
+                # The boxes already carry a 24-unit pad past the pins, so
+                # any positive gap is a real visual clearance. The vout
+                # label that sat ON 'DZ1' scored zero here; the tightest
+                # honest junction (the regulator's vb, hemmed by three
+                # bodies) achieves 8.
+                assert gap >= 8, (name, (fx, fy))
+
+
 def test_ground_pins_keep_their_own_ground_symbols():
     """Net 0 stays one flag per pin: LTspice renders each as the ground
     triangle, which is exactly how a hand drawing shows ground."""

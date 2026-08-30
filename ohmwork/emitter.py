@@ -297,6 +297,7 @@ def _stub_and_flag_lines(circuit, anchors) -> list[str]:
 
     bodies = _body_boxes(types, pin_at)
     committed: list[tuple[tuple, tuple]] = []
+    routed: dict[str, list] = {}
 
     ordered = sorted((net for net in circuit["nets"] if net != "0"),
                      key=lambda n: min(stub_end[e][0]
@@ -315,11 +316,9 @@ def _stub_and_flag_lines(circuit, anchors) -> list[str]:
                 flags.append(f"FLAG {fx} {fy} {net}")
             continue
         committed.extend(route)
+        routed[net] = route
         for (ax, ay), (bx, by) in route:
             wires.append(f"WIRE {ax} {ay} {bx} {by}")
-        taken = [tuple(map(int, f.split()[1:3])) for f in flags]
-        fx, fy = _flag_spot(route, bodies.values(), taken)
-        flags.append(f"FLAG {fx} {fy} {net}")
 
     # THE CLOSED LOOP. A hand drawing returns every current to a ground
     # rail along the bottom; parts dangling over unconnected triangles
@@ -337,10 +336,26 @@ def _stub_and_flag_lines(circuit, anchors) -> list[str]:
             fx, fy = stub_end[e]
             flags.append(f"FLAG {fx} {fy} 0")
     else:
+        committed.extend(rail)
+        routed["0"] = rail
         for (ax, ay), (bx, by) in rail:
             wires.append(f"WIRE {ax} {ay} {bx} {by}")
         for px, _ in g_points:
             flags.append(f"FLAG {px} {GND_Y} 0")
+
+    # NAME labels are placed only after EVERY wire exists (ground rail
+    # included): a spot chosen early could otherwise end up on a later
+    # net's crossing wire, which would union the two nets -- a short
+    # delivered by a label.
+    taken = [tuple(map(int, f.split()[1:3])) for f in flags]
+    for net, route in routed.items():
+        if net == "0":
+            continue
+        foreign_segs = [seg for other, r in routed.items() if other != net
+                        for seg in r]
+        fx, fy = _flag_spot(route, bodies.values(), taken, foreign_segs)
+        taken.append((fx, fy))
+        flags.append(f"FLAG {fx} {fy} {net}")
     return wires + flags
 
 
@@ -371,26 +386,40 @@ def _ground_rail(points, foreign, committed, bodies, my_refs):
     return None
 
 
-def _flag_spot(route, boxes, taken):
-    """Where the net's one name label goes: the point on the route's
-    horizontal wires farthest from every body (and every existing label),
-    so the name never sits on a component's own text. The owner's
-    screenshots showed 'vrect' printed through a diode's '1N4007'."""
+def _flag_spot(route, boxes, taken, foreign_segs):
+    """Where the net's one name label goes: the point on the route's own
+    wires -- horizontal OR vertical, the way a human names a node beside
+    a long riser when the horizontals are hemmed in -- farthest from
+    every body and every existing label. The owner's screenshots showed
+    'vrect' through a diode's '1N4007', then 'vout' through 'DZ1' when
+    only horizontals were considered.
+
+    A candidate lying on ANOTHER net's wire is skipped outright: a flag
+    at a crossing point would union the two nets in the parser (and in
+    LTspice), turning a legal crossing into a short.
+    """
     best, best_score = None, None
     for (ax, ay), (bx, by) in route:
-        if ay != by:
-            continue
-        for x in range(min(ax, bx), max(ax, bx) + 1, 16):
+        if ay == by:
+            spots = [(x, ay) for x in
+                     range(min(ax, bx), max(ax, bx) + 1, 16)]
+        else:
+            spots = [(ax, y) for y in
+                     range(min(ay, by), max(ay, by) + 1, 16)]
+        for spot in spots:
+            if any(_on_seg(spot, seg) for seg in foreign_segs):
+                continue
             # Boxes grow an extra margin here: the label text a body
             # carries extends past its pins, and a net name that clears
             # the body but sits on the body's own text still collides.
-            score = min([_box_gap((x, ay), (b[0] - 40, b[1] - 40,
-                                            b[2] + 40, b[3] + 40))
+            score = min([_box_gap(spot, (b[0] - 40, b[1] - 40,
+                                         b[2] + 40, b[3] + 40))
                          for b in boxes]
-                        + [abs(x - tx) + abs(ay - ty) for tx, ty in taken]
+                        + [abs(spot[0] - tx) + abs(spot[1] - ty)
+                           for tx, ty in taken]
                         or [10 ** 6])
             if best_score is None or score > best_score:
-                best, best_score = (x, ay), score
+                best, best_score = spot, score
     if best is None:
         best = min(p for seg in route for p in seg)
     return best
