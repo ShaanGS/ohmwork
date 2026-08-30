@@ -238,8 +238,11 @@ LABEL_WINDOWS = {
 }
 
 #: What the students' own files carry on every voltage source: two
-#: hidden attribute windows, so no extra text crowds the symbol.
-VOLTAGE_WINDOWS = ("WINDOW 123 0 0 Left 0", "WINDOW 39 0 0 Left 0")
+#: hidden attribute windows, so no extra text crowds the symbol -- plus
+#: a value window moved DOWN, clear of the minus pin's stub and the
+#: junction square the owner's close-up showed it crowding.
+VOLTAGE_WINDOWS = ("WINDOW 123 0 0 Left 0", "WINDOW 39 0 0 Left 0",
+                   "WINDOW 3 24 132 Left 2")
 
 _TWO_TERMINAL = {"res", "cap", "ind", "diode", "zener"}
 
@@ -340,8 +343,13 @@ def _stub_and_flag_lines(circuit, anchors) -> list[str]:
         routed["0"] = rail
         for (ax, ay), (bx, by) in rail:
             wires.append(f"WIRE {ax} {ay} {bx} {by}")
+        # Each ground triangle hangs from a short stub BELOW the rail,
+        # as in the hand drawings -- a flag placed ON the rail puts the
+        # wire through the triangle's tip, which the owner's close-up
+        # showed.
         for px, _ in g_points:
-            flags.append(f"FLAG {px} {GND_Y} 0")
+            wires.append(f"WIRE {px} {GND_Y} {px} {GND_Y + 16}")
+            flags.append(f"FLAG {px} {GND_Y + 16} 0")
 
     # NAME labels are placed only after EVERY wire exists (ground rail
     # included): a spot chosen early could otherwise end up on a later
