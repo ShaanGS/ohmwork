@@ -366,6 +366,33 @@ def test_a_network_timeout_spends_an_attempt_not_the_run(tmp_path):
     assert "one valid JSON object" not in provider.prompts[-1]
 
 
+def test_a_rejected_spec_is_fed_back_once_and_the_fix_accepted(tmp_path):
+    """Measured on the live repro of issue #1: the model named inputs A..D
+    and outputs a..d -- refused case-insensitively, correctly -- and the
+    whole run died on a naming choice one line of feedback would fix. A
+    spec validation failure now goes back to the model ONCE, with the
+    error; a second bad spec still ends the run."""
+    import json as _json
+    bad = _json.loads(SPEC_JSON)
+    bad["outputs"] = [o.lower() for o in bad["inputs"]]
+    bad["logic"] = {o: bad["inputs"][0] for o in bad["outputs"]}
+
+    provider = FakeProvider([_json.dumps(bad), SPEC_JSON, design_reply()])
+    solution = solve(QUESTION, provider=provider,
+                     backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                     workdir=tmp_path)
+    assert solution.comparison.agrees
+    retry_prompt = provider.prompts[1]
+    assert "REJECTED" in retry_prompt
+    assert "case-insensitively" in retry_prompt
+
+    always_bad = FakeProvider([_json.dumps(bad)] * 3)
+    with pytest.raises(DesignError, match="case-insensitively"):
+        solve(QUESTION, provider=always_bad,
+              backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+              workdir=tmp_path)
+
+
 def test_a_malformed_SPEC_reply_is_retried_then_given_up_on(tmp_path):
     """The spec call flubbing once costs nothing; flubbing endlessly must
     end as an error naming what kept failing, not spin."""

@@ -140,7 +140,22 @@ class LogisimTarget:
         # rejects them -- which is the first time that check has had
         # anything real to reject.
         "ttl7447":       ("7447", {}),
-        "seven_segment": ("7-Segment Display", {}),
+
+        # THE DISPLAY'S POLARITY IS ALWAYS WRITTEN, NEVER DEFAULTED -- the
+        # Constant doctrine below, learned again the hard way as issue #1:
+        # a 7447's active-low outputs wired straight to a display whose
+        # `active` attribute was left to Logisim's default (true: a segment
+        # lights on 1) rendered every digit as its photographic negative,
+        # while the solve reported verified -- truthfully, because only the
+        # output PINS are in the verified table and the display is not.
+        # Attribute name and default from Logisim Evolution 4.1.0's own
+        # source (std/io/SevenSegment.java), confirmed behaviourally by the
+        # incident. Two types so the polarity is the MODEL'S EXPLICIT
+        # CHOICE, disclosed in the wiring map and checked by
+        # partcheck.polarity_conflicts.
+        "seven_segment": ("7-Segment Display", {"active": "true"}),
+        "seven_segment_active_low":
+            ("7-Segment Display", {"active": "false"}),
 
         # Hold a wire at a fixed level without adding an input pin. An input
         # pin would double the truth table, and a part's control pins are not

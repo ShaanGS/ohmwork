@@ -372,3 +372,42 @@ def test_a_port_on_two_nets_is_refused_as_a_NET_error_not_a_geometry_one():
     assert "G.out" in message and "two nets" in message
     assert "'b'" in message and "'c'" in message
     assert "Merge them" in message
+
+
+# --------------------------------------------- display polarity (issue #1)
+
+
+def test_the_display_polarity_attribute_is_always_written():
+    """Never left to Logisim's default -- the Constant doctrine, relearned
+    as issue #1: a defaulted display polarity rendered every digit as its
+    photographic negative under a green verified."""
+    def circ_for(display_type):
+        circuit = {
+            "components": [
+                {"ref": "A", "type": "input_pin", "label": "A"},
+                {"ref": "B", "type": "input_pin", "label": "B"},
+                {"ref": "C", "type": "input_pin", "label": "C"},
+                {"ref": "D", "type": "input_pin", "label": "D"},
+                {"ref": "HI", "type": "high"},
+                {"ref": "U1", "type": "ttl7447"},
+                {"ref": "DS1", "type": display_type},
+                {"ref": "Qa", "type": "output_pin", "label": "seg_a"},
+            ],
+            "nets": {
+                "na": ["A.pin", "U1.A"], "nb": ["B.pin", "U1.B"],
+                "nc": ["C.pin", "U1.C"], "nd": ["D.pin", "U1.D"],
+                "nhi": ["HI.out", "U1.LT", "U1.BI", "U1.RBI", "DS1.dp"],
+                "nqa": ["U1.QA", "DS1.a", "Qa.pin"],
+                "nqb": ["U1.QB", "DS1.b"], "nqc": ["U1.QC", "DS1.c"],
+                "nqd": ["U1.QD", "DS1.d"], "nqe": ["U1.QE", "DS1.e"],
+                "nqf": ["U1.QF", "DS1.f"], "nqg": ["U1.QG", "DS1.g"],
+            },
+        }
+        return emit_circ(circuit)
+
+    high = circ_for("seven_segment")
+    assert '<a name="active" val="true"/>' in high
+
+    low = circ_for("seven_segment_active_low")
+    assert '<a name="active" val="false"/>' in low
+    assert '<a name="active" val="true"/>' not in low

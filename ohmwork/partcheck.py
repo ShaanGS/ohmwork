@@ -59,6 +59,7 @@ quietly becoming unpredictable.
 `tests/test_partcheck.py` is the spec for this module.
 """
 
+import re
 from dataclasses import dataclass
 from itertools import product
 
@@ -267,6 +268,10 @@ class PartWiring:
     #: refs of components that only listen -- a display, typically. They
     #: change no value, and naming them is how the map stays readable.
     sinks: tuple = ()
+    #: (ref, question-JSON type) for each sink, so the map can DISCLOSE a
+    #: display's polarity -- the one property of a sink that changes what a
+    #: person sees on screen (issue #1) while changing no row of the table.
+    sink_types: tuple = ()
     #: The evaluable form of the same circuit. Carried here rather than
     #: derived twice: two passes over one set of nets is two accounts of one
     #: fact, free to disagree.
@@ -426,8 +431,101 @@ def derive_wiring(circuit, type_name, target) -> PartWiring:
     return PartWiring(
         ref=ref, type_name=type_name, part_name=part_name,
         inputs=inputs, outputs=outputs, sinks=tuple(sinks),
+        sink_types=tuple((s, types[s]) for s in sinks),
         netlist=Netlist(part_ref=ref, types=types, port_net=port_net,
                         driver=driver, input_ports=input_ports))
+
+
+#: Display types and whether a segment lights on HIGH. Two entries because
+#: the polarity is the design's EXPLICIT choice -- issue #1 is what leaving
+#: it to Logisim's default produced: every digit rendered as its negative,
+#: under a green "verified" that was true of the pins and silent about the
+#: screen.
+DISPLAY_LIGHTS_ON_HIGH = {"seven_segment": True,
+                          "seven_segment_active_low": False}
+
+_ACTIVE_LOW_WORDS = re.compile(r"active[\s-]*low", re.IGNORECASE)
+
+#: The same word shapes domain.py uses to recognise the component.
+_DISPLAY_WORDS = re.compile(r"seven[\s-]*segment|7[\s-]*segment",
+                            re.IGNORECASE)
+
+
+def polarity_conflicts(question_text, circuit, target) -> list:
+    """A display wired straight to outputs the QUESTION calls active-low
+    must itself be active-low, or every digit renders inverted.
+
+    Issue #1, found by a student: logic verified on all 16 rows, display
+    showing the photographic negative of each digit. The truth table can
+    never catch it -- the display is not in the table -- so this check
+    reads the two facts that ARE available: the question's own words
+    ("active-low"), and whether a segment input is driven DIRECTLY by the
+    named part's output. When the question does not say active-low the
+    check DISARMS rather than guessing; the wiring map's polarity line
+    remains the defence.
+    """
+    components = circuit.get("components") or []
+    types = {c["ref"]: c["type"] for c in components}
+    displays = {ref: kind for ref, kind in types.items()
+                if kind in DISPLAY_LIGHTS_ON_HIGH}
+
+    if (question_text and _DISPLAY_WORDS.search(question_text)
+            and not displays):
+        # Measured on the live repro after the first fix: the model simply
+        # LEFT THE DISPLAY OUT and verified on the pins alone. The answer
+        # was true and under-delivered -- a drop, the species the coverage
+        # checks exist for.
+        return [
+            "the question asks for a seven-segment display and this design "
+            "has none. Add one -- type 'seven_segment_active_low' if its "
+            "segment inputs come directly from active-low outputs (a "
+            "7447's), 'seven_segment' if they are active-high -- and wire "
+            "its a..g inputs. It listens only, so the truth table is "
+            "unchanged; the screen is what it is for."]
+
+    if not question_text or not _ACTIVE_LOW_WORDS.search(question_text):
+        return []
+    if not displays:
+        return []
+
+    def part_output(member):
+        ref, pin = _split(member)
+        kind = types.get(ref)
+        if (kind is None or kind in PASSIVE_TYPES or kind in GATE_LOGIC
+                or kind in DISPLAY_LIGHTS_ON_HIGH):
+            return False
+        return any(name == pin and is_out
+                   for name, is_out in _ports(kind, target))
+
+    problems = []
+    flagged = set()
+    for members in (circuit.get("nets") or {}).values():
+        if not isinstance(members, (list, tuple)):
+            continue
+        direct = any(part_output(m) for m in members
+                     if isinstance(m, str) and "." in m)
+        if not direct:
+            continue
+        for m in members:
+            if not isinstance(m, str) or "." not in m:
+                continue
+            ref, pin = _split(m)
+            if (ref in displays and ref not in flagged
+                    and pin in "abcdefg"
+                    and DISPLAY_LIGHTS_ON_HIGH[displays[ref]]):
+                flagged.add(ref)
+                problems.append(
+                    f"the question says the segment outputs are ACTIVE-LOW "
+                    f"(a 0 lights a segment), and {ref}'s segment inputs "
+                    f"are wired directly to those outputs -- but {ref} is "
+                    f"an active-HIGH display (type 'seven_segment'), so "
+                    f"every digit would render as its photographic "
+                    f"negative. The truth table cannot catch this: the "
+                    f"display is not in it. Use type "
+                    f"'seven_segment_active_low' for {ref}, or put one "
+                    f"inverter on each segment line and keep the "
+                    f"active-high display.")
+    return problems
 
 
 def name_conflicts(wiring, target) -> list:
@@ -628,5 +726,13 @@ def render_wiring(wiring, notes=()) -> str:
         # table and must not read as though it did.
         lines.append(f"  also on these nets, listening only: "
                      f"{', '.join(sorted(wiring.sinks))}")
+    for ref, kind in sorted(wiring.sink_types):
+        # The one property of a listener that changes what a person SEES
+        # while changing no row of the table (issue #1). Disclosed so the
+        # human checking this map checks it too.
+        if kind in DISPLAY_LIGHTS_ON_HIGH:
+            level = "HIGH" if DISPLAY_LIGHTS_ON_HIGH[kind] else "LOW"
+            lines.append(f"  {ref} lights a segment on {level} -- check "
+                         f"this against the polarity of what feeds it")
     lines += [f"  note: {note}" for note in notes]
     return "\n".join(lines)

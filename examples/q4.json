@@ -14,7 +14,7 @@
       {"ref": "A", "type": "input_pin", "label": "A"},
       {"ref": "EN", "type": "input_pin", "label": "EN"},
       {"ref": "U1", "type": "ttl7447"},
-      {"ref": "DS1", "type": "seven_segment"},
+      {"ref": "DS1", "type": "seven_segment_active_low"},
       {"ref": "Qa", "type": "output_pin", "label": "Qa"},
       {"ref": "Qb", "type": "output_pin", "label": "Qb"},
       {"ref": "Qc", "type": "output_pin", "label": "Qc"},

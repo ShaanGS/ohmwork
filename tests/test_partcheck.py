@@ -364,9 +364,133 @@ def test_the_gate_logic_here_covers_everything_the_emitter_can_place():
     into one of those buckets would become silently unpredictable, so this
     fails the moment TYPE_MAP grows.
     """
-    parts = {"ttl7447", "seven_segment"}
+    parts = {"ttl7447", "seven_segment", "seven_segment_active_low"}
     assert (set(GATE_LOGIC) | set(PASSIVE_TYPES) | parts
             == LOGISIM.known_types())
+
+
+# --------------------------------------------- display polarity (issue #1)
+#
+# Found by a student, reported as the repo's first issue: a 7447's
+# active-low outputs wired straight to a display whose polarity was left to
+# Logisim's default rendered every digit as its photographic negative --
+# under a green "verified" that was true of the output pins and silent
+# about the screen. The truth table can never catch it (the display is not
+# in the table), so the polarity is now an explicit choice, gated against
+# the question's own words and disclosed in the wiring map.
+
+ACTIVE_LOW_WORDING = (
+    "Using Logisim Evolution, design a BCD-to-seven-segment display "
+    "circuit using the 7447-decoder IC. Caution: The 7447 decoder has "
+    "active-low segment outputs; therefore, a logic 0 turns a segment ON.")
+
+
+def display_circuit(display_type):
+    return {
+        "components": [
+            {"ref": "U1", "type": "ttl7447"},
+            {"ref": "DS1", "type": display_type},
+        ],
+        "nets": {
+            "n_qa": ["U1.QA", "DS1.a"],
+            "n_qb": ["U1.QB", "DS1.b"],
+        },
+    }
+
+
+def test_an_active_high_display_on_stated_active_low_outputs_is_refused():
+    from ohmwork.partcheck import polarity_conflicts
+
+    problems = polarity_conflicts(
+        ACTIVE_LOW_WORDING, display_circuit("seven_segment"), LOGISIM)
+    assert len(problems) == 1
+    message = problems[0]
+    assert "DS1" in message
+    assert "seven_segment_active_low" in message
+    assert "photographic negative" in message
+    assert "truth table cannot catch this" in message
+
+
+def test_an_active_low_display_passes_the_same_question():
+    from ohmwork.partcheck import polarity_conflicts
+
+    assert polarity_conflicts(
+        ACTIVE_LOW_WORDING,
+        display_circuit("seven_segment_active_low"), LOGISIM) == []
+
+
+def test_a_question_asking_for_a_display_refuses_a_design_without_one():
+    """Measured on the live repro after the polarity fix: the model simply
+    LEFT THE DISPLAY OUT, verified on the pins alone, and the answer
+    quietly under-delivered the question. A drop, the same species the
+    coverage checks exist for."""
+    from ohmwork.partcheck import polarity_conflicts
+
+    circuit = {
+        "components": [{"ref": "U1", "type": "ttl7447"}],
+        "nets": {"n_qa": ["U1.QA"]},
+    }
+    problems = polarity_conflicts(ACTIVE_LOW_WORDING, circuit, LOGISIM)
+    assert len(problems) == 1
+    assert "this design has none" in problems[0]
+    assert "seven_segment_active_low" in problems[0]
+
+
+def test_a_question_not_mentioning_a_display_needs_none():
+    from ohmwork.partcheck import polarity_conflicts
+
+    circuit = {
+        "components": [{"ref": "U1", "type": "ttl7447"}],
+        "nets": {"n_qa": ["U1.QA"]},
+    }
+    assert polarity_conflicts(
+        "wire a 7447 and report its outputs", circuit, LOGISIM) == []
+
+
+def test_the_gate_disarms_when_the_question_does_not_say_active_low():
+    """A false refusal costs the product; without the words the check has
+    no ground to stand on, and the wiring map line is the defence."""
+    from ohmwork.partcheck import polarity_conflicts
+
+    assert polarity_conflicts(
+        "design a display circuit using the 7447",
+        display_circuit("seven_segment"), LOGISIM) == []
+
+
+def test_a_display_fed_through_inverters_is_not_direct_and_not_refused():
+    from ohmwork.partcheck import polarity_conflicts
+
+    circuit = {
+        "components": [
+            {"ref": "U1", "type": "ttl7447"},
+            {"ref": "G1", "type": "not"},
+            {"ref": "DS1", "type": "seven_segment"},
+        ],
+        "nets": {
+            "n_qa": ["U1.QA", "G1.in0"],
+            "n_a": ["G1.out", "DS1.a"],
+        },
+    }
+    assert polarity_conflicts(ACTIVE_LOW_WORDING, circuit, LOGISIM) == []
+
+
+def test_the_wiring_map_discloses_the_display_polarity():
+    """The map is what the human checks; a listener that changes what the
+    screen SHOWS belongs on it."""
+    from ohmwork.partcheck import PartWiring, render_wiring
+
+    wiring = PartWiring(
+        ref="U1", type_name="ttl7447", part_name="7447",
+        inputs={}, outputs={}, sinks=("DS1",),
+        sink_types=(("DS1", "seven_segment_active_low"),))
+    rendered = render_wiring(wiring)
+    assert "DS1 lights a segment on LOW" in rendered
+
+    wiring_high = PartWiring(
+        ref="U1", type_name="ttl7447", part_name="7447",
+        inputs={}, outputs={}, sinks=("DS1",),
+        sink_types=(("DS1", "seven_segment"),))
+    assert "DS1 lights a segment on HIGH" in render_wiring(wiring_high)
 
 
 def test_a_combinational_loop_is_NAMED_rather_than_crashing():

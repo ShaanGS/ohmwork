@@ -43,6 +43,7 @@ from ohmwork.llm import (LLMError, MalformedReply, PoolExhausted,
 from ohmwork.logisim_backend import DigitalEvaluationError
 from ohmwork.logisim_symbols import SAFE_LABEL
 from ohmwork.partcheck import (WiringError, derive_wiring, name_conflicts,
+                               polarity_conflicts,
                                part_basis, predict_table, probe_table,
                                probeable, spec_basis)
 from ohmwork.spec import (Spec, SpecError, check_priority_encoder,
@@ -220,7 +221,13 @@ NAMED_PARTS_RULE = (
     "question's input signals to its inputs and the question's output "
     "signals to its outputs. Do not rebuild the part out of gates: the "
     "question named it, and a gate-level equivalent answers a different "
-    "question. Use gates only for anything the named part does not cover.")
+    "question. Use gates only for anything the named part does not cover. "
+    "A SEVEN-SEGMENT DISPLAY has a polarity and you must choose it: "
+    "'seven_segment' lights a segment on HIGH, 'seven_segment_active_low' "
+    "lights on LOW. Wired directly to ACTIVE-LOW outputs (a 7447's), the "
+    "display must be 'seven_segment_active_low' -- an active-high display "
+    "there renders every digit as its photographic negative, and the truth "
+    "table cannot catch it because the display is not in the table.")
 
 RETRY_BLOCK = """
 YOUR PREVIOUS DESIGN WAS REJECTED:
@@ -515,6 +522,13 @@ def _attempt(circuit, question, spec, provider_name, model, backend, workdir,
         conflicts = name_conflicts(wiring, target)
         if conflicts:
             raise DesignError("\n".join(conflicts))
+        # Issue #1: a display's polarity is outside the verified table, so
+        # it gets its own gate -- word-triggered by the question's
+        # "active-low", checked against the design's own nets, refused
+        # BEFORE the evaluator confirms a circuit whose screen is wrong.
+        polarity = polarity_conflicts(question, circuit, target)
+        if polarity:
+            raise DesignError("\n".join(polarity))
         basis = part_basis(wiring, probe,
                            getattr(spec, "notes", ()) or ())
         subject = f"what a real {wiring.part_name} does through this wiring"
@@ -645,9 +659,17 @@ def _ask_until_it_fits(provider, prompt, budget, parse, what):
     """
     malformed_left = 2
     transient_left = 2
+    #: One shot at fixing a VALIDATION failure. Measured on the live repro
+    #: of issue #1: the model named inputs A..D and outputs a..d, the spec
+    #: gate refused (correctly -- Logisim renames case-insensitive clashes
+    #: silently), and the whole run died on a naming choice one line of
+    #: feedback fixes. One, not more: a model that ignores the feedback
+    #: once is not going to honour it on the fourth telling.
+    feedback_left = 1
+    asked = prompt
     while True:
         try:
-            reply = _complete_patiently(provider, prompt, max_tokens=budget)
+            reply = _complete_patiently(provider, asked, max_tokens=budget)
         except PoolExhausted:
             # Nobody could be asked. The question was never wrong and no
             # circuit was ever designed; wrapping this as a design failure
@@ -682,6 +704,13 @@ def _ask_until_it_fits(provider, prompt, budget, parse, what):
                     f"{what} does not fit in {budget} tokens, which is the "
                     f"ceiling. {exc}") from exc
             budget = grown
+        except DesignError as exc:
+            # A VALIDATION failure -- the reply parsed but broke a rule the
+            # model can act on. Fed back once, verbatim.
+            if feedback_left == 0:
+                raise
+            feedback_left -= 1
+            asked = prompt + RETRY_BLOCK.format(error=exc)
 
 
 def solve(question: str, *, provider=None, backend=None, workdir,
