@@ -227,7 +227,10 @@ NAMED_PARTS_RULE = (
     "lights on LOW. Wired directly to ACTIVE-LOW outputs (a 7447's), the "
     "display must be 'seven_segment_active_low' -- an active-high display "
     "there renders every digit as its photographic negative, and the truth "
-    "table cannot catch it because the display is not in the table.")
+    "table cannot catch it because the display is not in the table. Hold "
+    "the display's dp (decimal point) at the level that keeps it DARK -- "
+    "wire it to a 'high' constant on an active-low display, a 'low' on an "
+    "active-high one -- unless the question asks for the decimal point.")
 
 RETRY_BLOCK = """
 YOUR PREVIOUS DESIGN WAS REJECTED:

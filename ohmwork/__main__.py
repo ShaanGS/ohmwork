@@ -240,8 +240,14 @@ def _solve_analog(args, provider) -> int:
           "commented out to uncomment. Those exact bytes are therefore NOT "
           "what LTspice ran — the per-run files in the working directory "
           "were. What this file has is the emit/parse round trip.")
-    print("The layout is generated mechanically: components in a grid, wired "
-          "by net label rather than routed. Correct, not pretty.")
+    # The wording tracks the emitter: since the routed layout landed, "wired
+    # by net label rather than routed" was FALSE of the file it described --
+    # the audit's stale-disclosure finding. An honest label that has rotted
+    # is a dishonest label.
+    print("The layout is machine-generated in a hand-drawn style: signal "
+          "left to right, shunts down to a ground rail. Connectivity was "
+          "recovered from the drawing's own geometry and matches the "
+          "design.")
     _report_pool_incidents(provider)
     return 0
 

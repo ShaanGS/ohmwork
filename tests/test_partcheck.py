@@ -137,8 +137,10 @@ def test_a_control_pin_held_at_a_level_reads_as_that_level():
     circuit = q4_circuit()
     circuit["components"] = [c for c in circuit["components"]
                              if c["ref"] != "EN"]
-    circuit["components"].append({"ref": "HI", "type": "high"})
-    circuit["nets"]["n_en"] = ["HI.out", "U1.LT", "U1.BI", "U1.RBI", "DS1.dp"]
+    # q4 now carries its own HI holding the decimal point dark, so this
+    # test's constant gets a ref of its own.
+    circuit["components"].append({"ref": "HI2", "type": "high"})
+    circuit["nets"]["n_en"] = ["HI2.out", "U1.LT", "U1.BI", "U1.RBI"]
 
     wiring = derive_wiring(circuit, "ttl7447", LOGISIM)
     assert wiring.inputs["LT"] == ("level", 1)
@@ -324,8 +326,10 @@ def test_a_held_level_collapses_the_rows_it_no_longer_varies():
     circuit = q4_circuit()
     circuit["components"] = [c for c in circuit["components"]
                              if c["ref"] != "EN"]
-    circuit["components"].append({"ref": "HI", "type": "high"})
-    circuit["nets"]["n_en"] = ["HI.out", "U1.LT", "U1.BI", "U1.RBI", "DS1.dp"]
+    # q4 now carries its own HI holding the decimal point dark, so this
+    # test's constant gets a ref of its own.
+    circuit["components"].append({"ref": "HI2", "type": "high"})
+    circuit["nets"]["n_en"] = ["HI2.out", "U1.LT", "U1.BI", "U1.RBI"]
 
     table = predicted(circuit, ("D", "C", "B", "A"))
     assert len(table.rows) == 16
@@ -472,6 +476,33 @@ def test_a_display_fed_through_inverters_is_not_direct_and_not_refused():
         },
     }
     assert polarity_conflicts(ACTIVE_LOW_WORDING, circuit, LOGISIM) == []
+
+
+def test_a_driven_decimal_point_is_disclosed_and_a_dark_one_is_quiet():
+    """The audit's follow-up finding: dp's pin position is an ASSUMPTION
+    (ASSUMED_PORTS -- no examined file wired one) and dp is in no table,
+    so anything actively driving it shows on screen unchecked. The Q4
+    example was lighting it permanently."""
+    from ohmwork.partcheck import Netlist, PartWiring, render_wiring
+
+    def wiring_with_dp_driver(driver_ref, driver_kind):
+        types = {"U1": "ttl7447", "DS1": "seven_segment_active_low",
+                 driver_ref: driver_kind}
+        return PartWiring(
+            ref="U1", type_name="ttl7447", part_name="7447",
+            inputs={}, outputs={}, sinks=("DS1",),
+            sink_types=(("DS1", "seven_segment_active_low"),),
+            netlist=Netlist(part_ref="U1", types=types,
+                            port_net={"DS1.dp": "n_dp"},
+                            driver={"n_dp": (driver_ref, "out")},
+                            input_ports={}))
+
+    lit = render_wiring(wiring_with_dp_driver("EN", "input_pin"))
+    assert "decimal point" in lit
+    assert "assumption never measured" in lit
+
+    dark = render_wiring(wiring_with_dp_driver("HI", "high"))
+    assert "decimal point" not in dark
 
 
 def test_the_wiring_map_discloses_the_display_polarity():

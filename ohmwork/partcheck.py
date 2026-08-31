@@ -730,9 +730,34 @@ def render_wiring(wiring, notes=()) -> str:
         # The one property of a listener that changes what a person SEES
         # while changing no row of the table (issue #1). Disclosed so the
         # human checking this map checks it too.
-        if kind in DISPLAY_LIGHTS_ON_HIGH:
-            level = "HIGH" if DISPLAY_LIGHTS_ON_HIGH[kind] else "LOW"
-            lines.append(f"  {ref} lights a segment on {level} -- check "
-                         f"this against the polarity of what feeds it")
+        if kind not in DISPLAY_LIGHTS_ON_HIGH:
+            continue
+        lights_on_high = DISPLAY_LIGHTS_ON_HIGH[kind]
+        level = "HIGH" if lights_on_high else "LOW"
+        lines.append(f"  {ref} lights a segment on {level} -- check "
+                     f"this against the polarity of what feeds it")
+        # The decimal point: its pin position is an ASSUMPTION (see
+        # ASSUMED_PORTS -- no examined file ever wired one), and it is
+        # not in any table, so anything actively driving it shows on
+        # screen unchecked. The audit found the Q4 example lighting it
+        # permanently. Quiet when held at the level that keeps it dark.
+        nl = wiring.netlist
+        if nl is None:
+            continue
+        net = nl.port_net.get(f"{ref}.dp")
+        if net is None:
+            continue
+        drv = nl.driver.get(net)
+        if drv is None:
+            continue
+        dark_kind = "low" if lights_on_high else "high"
+        if nl.types.get(drv[0]) != dark_kind:
+            lines.append(
+                f"  {ref}.dp (decimal point) is driven by "
+                f"{drv[0]}.{drv[1]} and will light with it -- and dp's "
+                f"pin position is an assumption never measured from a "
+                f"real file. Hold it "
+                f"{'LOW' if lights_on_high else 'HIGH'} unless the "
+                f"question asks for the decimal point.")
     lines += [f"  note: {note}" for note in notes]
     return "\n".join(lines)

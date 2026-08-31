@@ -563,7 +563,9 @@ def _measured_payload(solution, downloads: dict) -> dict:
             "the others commented out to uncomment. Those exact bytes are "
             "therefore NOT what LTspice ran — the per-run files were. What "
             "this file has is the emit/parse geometric round trip. The "
-            "layout is generated mechanically: correct, not pretty."),
+            "layout is machine-generated in a hand-drawn style; its "
+            "connectivity was recovered from the drawing's own geometry "
+            "and matches the design."),
     }
 
 
