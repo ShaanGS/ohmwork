@@ -301,10 +301,18 @@ def evaluate_spec(spec: Spec) -> SpecTable:
     overlap = sorted(name for name in spec.inputs
                      if name.casefold() in output_by_folded_name)
     if overlap:
+        # This text is fed back to the model on the retry, so it carries
+        # the FIX, not just the fact. Measured (the owner's own screenshot,
+        # gpt-oss on the 7447 question): told only that A..D clashed with
+        # a..d, the model has nothing to act on -- Logisim treats labels
+        # case-insensitively, so lower-casing is not a rename.
         raise SpecError(
-            f"{overlap} named as both input and output (case-insensitively). A signal cannot be "
-            f"both, and letting it be one produces a table whose columns do "
-            f"not mean what their names say."
+            f"{overlap} named as both input and output (case-insensitively "
+            f"-- Logisim treats labels case-insensitively, so 'a' IS 'A'). "
+            f"A signal cannot be both. Keep the inputs as the question "
+            f"names them and RENAME the outputs to distinct words: segment "
+            f"outputs become seg_a..seg_g, a sum bit becomes sum0, and so "
+            f"on."
         )
     for name in (spec.inputs, spec.outputs):
         duplicates = sorted({n for n in name if list(name).count(n) > 1})
