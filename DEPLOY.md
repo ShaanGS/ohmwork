@@ -16,7 +16,16 @@ that checks the answer. That rules out Vercel, Netlify and every serverless
 platform: no JVM, and a solve takes 10–60 seconds, past their function limits.
 A platform that runs a **Docker container** is the requirement.
 
-### If Vercel offers to import this, decline
+### The STATIC site is on Vercel; the app is not
+
+`vercel.json` at the repo root builds the same thing the Pages workflow
+builds -- the library viewer rendered into `site/library/` and the landing
+page copied to the root -- and Vercel serves it at ohmwork.vercel.app. It
+can do that because the site computes nothing. The warning below is about
+the APP in `web/`, which Vercel would import as a bare React page with no
+solver behind it.
+
+### If Vercel offers to import `web/`, decline
 
 Pushing this repository makes Vercel email *"1 new project available to
 import — web · vite"*. It has detected the React frontend in `web/` and it is

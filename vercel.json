@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "python3 -m pip install -e .",
+  "buildCommand": "python3 -m ohmwork --library library --build-site site/library && cp landing/* site/",
+  "outputDirectory": "site",
+  "cleanUrls": true,
+  "trailingSlash": true,
+  "headers": [
+    { "source": "/(.*)", "headers": [ { "key": "X-Content-Type-Options", "value": "nosniff" } ] }
+  ]
+}
