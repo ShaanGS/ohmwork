@@ -3,160 +3,242 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="dark">
 <title>Ohmwork</title>
 <meta name="description" content="A lab question in. A circuit file and an answer a real simulator checked, out.">
 <link rel="icon" type="image/png" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #101310;
-    --card: #181c17;
-    --border: rgba(255, 255, 255, 0.10);
-    --fg: #f6f8f4;
-    --muted: #9aa398;
-    --lime: #a4e819;
-    --lime-deep: #7bc20d;
-    --amber: #e8c04a;
+    --bg: #faf9f5;
+    --panel: #f1efe8;
+    --line: #e4e1d7;
+    --ink: #1a1a17;
+    --grey: #82806f;
+    --accent: #5c9407;   /* the mascot's lime, deepened for light ground */
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
-    background: var(--bg);
-    color: var(--fg);
-    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--ink);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.55;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 0 24px; }
-  header { padding: 28px 0; display: flex; align-items: center; justify-content: space-between; }
-  .mark { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -0.01em; }
-  .mark img { width: 34px; height: 34px; object-fit: contain; }
-  header nav a { color: var(--muted); text-decoration: none; font-size: 14px; margin-left: 20px; }
-  header nav a:hover { color: var(--fg); }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 32px; }
 
-  .hero { padding: 56px 0 40px; display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: center; }
-  .hero img { width: 220px; height: auto; filter: drop-shadow(0 0 44px rgba(164, 232, 25, 0.22)); }
-  h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.12; letter-spacing: -0.02em; font-weight: 700; }
-  h1 em { font-style: normal; color: var(--lime); }
-  .sub { margin-top: 16px; color: var(--muted); max-width: 34em; }
-
-  .cta { margin-top: 28px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  .btn {
-    display: inline-block; background: var(--lime); color: #16210a;
-    font-weight: 650; text-decoration: none; padding: 13px 26px;
-    border-radius: 12px; font-size: 16px;
-    box-shadow: 0 0 28px rgba(164, 232, 25, 0.25);
+  /* ---------- nav ---------- */
+  nav { display: flex; align-items: center; padding: 18px 0; gap: 28px; }
+  .mark { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+  .mark img { width: 26px; height: 26px; object-fit: contain; }
+  nav .links { display: flex; gap: 24px; margin-left: auto; font-size: 14px; color: #55534a; }
+  nav .links a:hover { color: var(--ink); }
+  .pill {
+    background: var(--ink); color: #fff; font-size: 14px; font-weight: 500;
+    padding: 8px 18px; border-radius: 999px; white-space: nowrap;
   }
-  .btn:hover { background: var(--lime-deep); }
-  .cta small { color: var(--muted); font-size: 13px; }
+  .pill:hover { background: #33322d; }
 
-  .note {
-    margin-top: 18px; font-size: 13px; color: var(--muted);
-    border-left: 3px solid var(--amber); padding: 2px 0 2px 12px; max-width: 40em;
+  /* ---------- hero ---------- */
+  .hero { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center; padding: 88px 0 96px; }
+  .eyebrow { font-size: 15px; color: #55534a; margin-bottom: 10px; }
+  h1 { font-size: clamp(34px, 4.6vw, 52px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 600; }
+  h1 .dim { color: #a3a191; }
+  .hero .lead { margin-top: 22px; font-size: 16px; color: #55534a; max-width: 30em; }
+  .cta { margin-top: 30px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .btn-primary {
+    background: var(--ink); color: #fff; font-weight: 500; font-size: 15px;
+    padding: 12px 24px; border-radius: 999px;
   }
-  .note b { color: var(--amber); font-weight: 600; }
-
-  section { padding: 36px 0; border-top: 1px solid var(--border); }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; margin-bottom: 20px; }
-  .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
-  .card b { display: block; font-size: 15px; margin-bottom: 6px; }
-  .card p { font-size: 14px; color: var(--muted); }
-  .card .n { color: var(--lime); font-weight: 700; font-size: 13px; }
-
-  .honest p { color: var(--muted); font-size: 15px; max-width: 46em; }
-  .honest p + p { margin-top: 12px; }
-  .honest b { color: var(--fg); }
-
-  footer { padding: 32px 0 48px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 13px; }
-  footer a { color: var(--muted); }
-  footer a:hover { color: var(--fg); }
-  a { color: var(--lime); }
-
-  @media (max-width: 640px) {
-    .hero { grid-template-columns: 1fr; }
-    .hero img { width: 150px; order: -1; }
-    .cols { grid-template-columns: 1fr; }
+  .btn-primary:hover { background: #33322d; }
+  .btn-ghost {
+    font-size: 15px; font-weight: 500; padding: 12px 22px;
+    border: 1px solid var(--line); border-radius: 999px; background: #fff;
   }
+  .btn-ghost:hover { border-color: #c9c5b6; }
+  .fine { margin-top: 16px; font-size: 13px; color: var(--grey); }
+  .fine b { color: #55534a; font-weight: 500; }
+
+  .hero-art {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    display: flex; align-items: center; justify-content: center; padding: 40px;
+    min-height: 380px;
+  }
+  .hero-art img { width: min(78%, 330px); height: auto; }
+
+  /* ---------- section scaffolding ---------- */
+  section { padding: 72px 0; border-top: 1px solid var(--line); }
+  .kicker { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .kicker + .kicker-sub { color: #a3a191; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-top: 36px; }
+  .cell { background: var(--panel); padding: 24px 22px 28px; }
+  .cell h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .cell p { font-size: 14px; color: #55534a; }
+  .cell .more { display: inline-block; margin-top: 14px; font-size: 14px; font-weight: 500; color: var(--accent); }
+
+  /* ---------- how it works ---------- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 36px; }
+  .step .num { font-size: 13px; font-weight: 600; color: var(--accent); letter-spacing: 0.06em; }
+  .step h3 { font-size: 16px; font-weight: 600; margin: 8px 0 8px; letter-spacing: -0.01em; }
+  .step p { font-size: 14px; color: #55534a; }
+
+  /* ---------- honesty ---------- */
+  .claims { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px 56px; }
+  .claims p { font-size: 15px; color: #55534a; }
+  .claims b { color: var(--ink); font-weight: 600; display: block; margin-bottom: 6px; font-size: 15px; }
+
+  /* ---------- band ---------- */
+  .band { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+  .band p { color: #55534a; max-width: 36em; margin-top: 8px; }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 48px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--grey); }
+  footer a:hover { color: var(--ink); }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; padding: 48px 0 56px; }
+    .hero-art { min-height: 280px; order: -1; }
+    .grid4 { grid-template-columns: 1fr 1fr; }
+    .steps, .claims { grid-template-columns: 1fr; gap: 28px; }
+  }
+  @media (max-width: 520px) { .grid4 { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <span class="mark"><img src="logo.png" alt=""> ohmwork</span>
-    <nav>
-      <a href="library/">solved library</a>
-      <a href="https://github.com/ShaanGS/ohmwork">github</a>
-    </nav>
-  </header>
+  <nav>
+    <a class="mark" href="#"><img src="logo.png" alt=""> Ohmwork</a>
+    <div class="links">
+      <a href="#how">How it works</a>
+      <a href="library/">Solved library</a>
+      <a href="https://github.com/ShaanGS/ohmwork">GitHub</a>
+    </div>
+    <a class="pill" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">Download</a>
+  </nav>
 
   <div class="hero">
     <div>
-      <h1>Your lab question in.<br>A <em>simulator-checked</em> circuit out.</h1>
-      <p class="sub">
-        Type an electronics open-ended question in plain English. Ohmwork
-        designs the circuit, then makes a real simulator prove it &mdash;
-        Logisim&nbsp;Evolution for digital, LTspice for analog &mdash; and
-        hands you the circuit file plus the answer, with exactly what was
-        checked stated on every result.
+      <p class="eyebrow">Ohmwork, for electronics lab work</p>
+      <h1>Your lab question in.<br>
+          <span class="dim">A simulator-checked circuit out.</span></h1>
+      <p class="lead">
+        Type an open-ended question in plain English. Ohmwork designs the
+        circuit, makes a real simulator prove it — Logisim Evolution for
+        digital, LTspice for analog — and hands you the circuit file with
+        the answer.
       </p>
       <div class="cta">
         <!-- releases/latest/download survives asset re-uploads; update the
              filename when the version bumps. -->
-        <a class="btn" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">
-          Download for Windows
-        </a>
-        <small>free &middot; ~240&nbsp;MB &middot; digital evaluator included</small>
+        <a class="btn-primary" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">Download for Windows</a>
+        <a class="btn-ghost" href="library/">Browse solved questions</a>
       </div>
-      <p class="note">
-        <b>Windows will warn</b> that the app is unrecognised &mdash; it is not
-        code-signed yet. Click <b>More&nbsp;info&nbsp;&rarr;&nbsp;Run&nbsp;anyway</b>.
+      <p class="fine">
+        Free, ~240&nbsp;MB, digital evaluator included. Windows flags unsigned
+        apps — choose <b>More info&nbsp;&rarr;&nbsp;Run anyway</b>.
       </p>
     </div>
-    <img src="logo.png" alt="The Ohmwork mascot">
+    <div class="hero-art">
+      <img src="logo.png" alt="The Ohmwork mascot">
+    </div>
   </div>
 
   <section>
-    <h2>Three steps</h2>
-    <div class="cols">
-      <div class="card"><span class="n">1</span><b>Install</b>
-        <p>Logisim Evolution is bundled inside &mdash; digital questions work
-           out of the box. For analog, install
-           <a href="https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html">LTspice</a>
-           (free); the app tells you if it is missing.</p></div>
-      <div class="card"><span class="n">2</span><b>Add a free model key</b>
-        <p>The first-run screen links to free signups (Groq, Google AI
-           Studio) and stores your key encrypted on your machine. It is never
-           uploaded by Ohmwork.</p></div>
-      <div class="card"><span class="n">3</span><b>Ask</b>
-        <p>Decoders, encoders, 7447 displays, regulators, rectifiers.
-           Download the <code>.circ</code> / <code>.asc</code> and open it in
-           the real tool.</p></div>
+    <p class="kicker">Every answer is checked before you see it</p>
+    <p class="kicker-sub">The model designs. A real simulator decides.</p>
+    <div class="grid4">
+      <div class="cell">
+        <h3>Externally verified</h3>
+        <p>Digital answers are evaluated row by row by Logisim Evolution
+           running the actual emitted file. Analog answers are simulated by
+           LTspice and checked against the question&rsquo;s own figures,
+           operating regimes included.</p>
+      </div>
+      <div class="cell">
+        <h3>Refuses instead of bluffing</h3>
+        <p>Sequential logic, unmeasured parts, analog without LTspice —
+           refused with the reason named. A wrong answer is structurally
+           harder than no answer.</p>
+      </div>
+      <div class="cell">
+        <h3>The file is the answer</h3>
+        <p>You get the <code>.circ</code> or <code>.asc</code> the simulator
+           actually checked, drawn the way a person draws it. Open it in the
+           real tool and keep working.</p>
+      </div>
+      <div class="cell">
+        <h3>Nothing hidden</h3>
+        <p>Every result states what was checked, by which tool, and what no
+           check can establish. Rejected attempts are shown, not hidden.</p>
+        <a class="more" href="library/">See real solves &rarr;</a>
+      </div>
     </div>
   </section>
 
-  <section class="honest">
-    <h2>What makes it trustworthy</h2>
-    <p><b>The model never grades its own work.</b> Every digital answer is
-       evaluated row-by-row by Logisim Evolution running the actual emitted
-       file; every analog answer is simulated by LTspice and checked against
-       the question's own figures, operating regimes included. A design the
-       simulator disagrees with is thrown away and redone &mdash; nothing
-       reaches you unchecked.</p>
-    <p><b>It refuses instead of bluffing.</b> Questions outside its reach
-       &mdash; sequential logic, unmeasured parts, analog without LTspice
-       &mdash; are refused with the reason named, never answered with a
-       guess.</p>
-    <p><b>One check is yours.</b> Every answer starts with THE READING: how
-       your question was understood. The simulator proves the circuit matches
-       the reading; only you can confirm the reading matches your question.
-       That line is printed on every answer because it is true.</p>
+  <section id="how">
+    <p class="kicker">How it works</p>
+    <div class="steps">
+      <div class="step">
+        <span class="num">01</span>
+        <h3>Install</h3>
+        <p>The digital evaluator is bundled — decoder and gate questions work
+           out of the box. For analog, install
+           <a style="color: var(--accent); font-weight: 500;"
+              href="https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html">LTspice</a>
+           (free); the app tells you if it&rsquo;s missing.</p>
+      </div>
+      <div class="step">
+        <span class="num">02</span>
+        <h3>Add a free model key</h3>
+        <p>The first-run screen links to free signups and stores your key
+           encrypted on your machine. It is never uploaded by Ohmwork.</p>
+      </div>
+      <div class="step">
+        <span class="num">03</span>
+        <h3>Ask, then check the reading</h3>
+        <p>Every answer starts with how your question was understood. The
+           simulator proves the circuit matches that reading — confirming the
+           reading matches your question is the one check that&rsquo;s yours.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="kicker">Built on one rule</p>
+    <p class="kicker-sub">The model never grades its own work.</p>
+    <div class="claims">
+      <p><b>Wrong designs die in private.</b> A circuit the simulator
+         disagrees with is thrown away and redone. If nothing passes, you get
+         an honest failure — never a confident guess.</p>
+      <p><b>Chips are measured, not remembered.</b> A question naming a 7447
+         is checked against a real 7447&rsquo;s own evaluated behaviour, not
+         against anyone&rsquo;s memory of a datasheet.</p>
+      <p><b>Weaker claims look weaker.</b> Analog results say
+         &ldquo;measured&rdquo;, never &ldquo;verified&rdquo; — checking a few
+         numbers is a smaller promise than checking every row, and the app
+         refuses to let the two look alike.</p>
+      <p><b>Every published number is traceable.</b> The
+         <a style="color: var(--accent); font-weight: 500;" href="library/">solved library</a>
+         carries the files, the tool versions, and the checks behind each
+         answer — audit it without trusting us.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="band">
+      <div>
+        <p class="kicker">Ready when you are</p>
+        <p>One installer, a free key, and your next open-ended question.</p>
+      </div>
+      <a class="btn-primary" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">Download for Windows</a>
+    </div>
   </section>
 
   <footer>
-    <span>MIT licensed &middot; built for the SRM ECE lab batch</span>
-    <span>
-      <a href="library/">solved questions</a> &middot;
-      <a href="https://github.com/ShaanGS/ohmwork/issues">report a wrong answer</a>
-    </span>
+    <span>MIT licensed · built for the SRM ECE lab batch</span>
+    <span><a href="https://github.com/ShaanGS/ohmwork/issues">Report a wrong answer</a></span>
   </footer>
 </div>
 </body>
