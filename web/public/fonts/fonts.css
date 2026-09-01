@@ -1,0 +1,6 @@
+/* Self-hosted: the desktop shell's CSP allows no external fonts, and the
+   app must look the same offline. Latin subsets, OFL-licensed. Inter and
+   JetBrains Mono are variable fonts, so one file covers the weight range. */
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 400 600; font-display: swap; src: url(/fonts/Inter.woff2) format("woff2"); }
+@font-face { font-family: "Instrument Serif"; font-style: normal; font-weight: 400; font-display: swap; src: url(/fonts/InstrumentSerif-400.woff2) format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400 500; font-display: swap; src: url(/fonts/JetBrainsMono.woff2) format("woff2"); }

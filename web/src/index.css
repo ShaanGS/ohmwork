@@ -1,65 +1,58 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* shadcn/ui tokens, retuned to the owner's brand: the Ohmwork mascot --
-   white body, black face, glowing lime eyes and orbit ring. Lime is the
-   brand and the PRIMARY action colour; the page stays near-black so the
-   mascot's palette carries.
+/* The app shares the landing page's language: a light, slightly warm page,
+   white surfaces separated by hairlines rather than borders-and-fills, ink
+   in three strengths, and ONE brand colour -- the mascot's lime -- used for
+   the primary action and for "an outside tool confirmed it".
 
-   The three STATUS colours are not decoration -- they carry meaning this
-   project cannot express without them: green means an outside tool
-   confirmed it, amber means read this yourself, red means nothing was
-   returned. Verified-green is tuned toward the brand lime so a confirmed
-   answer and the brand read as one family, while caution and destructive
-   stay unmistakably amber and red. */
-
-@custom-variant dark (&:is(.dark *));
+   The three STATUS colours carry meaning this project cannot express
+   without them: green means an outside tool confirmed it, amber means read
+   this yourself, red means nothing was returned. Verified-green is the
+   deepened lime so a confirmed answer and the brand read as one family. */
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --verified: oklch(0.55 0.14 160);
-  --caution: oklch(0.60 0.13 75);
-}
+  --radius: 0.75rem;
 
-.dark {
-  --background: oklch(0.13 0.006 140);
-  --foreground: oklch(0.985 0.005 140);
-  --card: oklch(0.185 0.008 140);
-  --card-foreground: oklch(0.985 0.005 140);
-  --popover: oklch(0.185 0.008 140);
-  --popover-foreground: oklch(0.985 0.005 140);
-  --primary: oklch(0.87 0.24 132);
-  --primary-foreground: oklch(0.17 0.03 132);
-  --secondary: oklch(0.25 0.01 140);
-  --secondary-foreground: oklch(0.985 0.005 140);
-  --muted: oklch(0.25 0.01 140);
-  --muted-foreground: oklch(0.70 0.01 140);
-  --accent: oklch(0.25 0.02 132);
-  --accent-foreground: oklch(0.985 0.005 140);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.87 0.24 132 / 45%);
-  --verified: oklch(0.82 0.19 140);
-  --caution: oklch(0.82 0.14 85);
+  --page: #fbfcf9;
+  --surface: #ffffff;
+  --inset: #f3f4ef;
+  --hover: rgba(18, 20, 16, 0.05);
+  --line: rgba(18, 20, 16, 0.09);
+  --line-strong: rgba(18, 20, 16, 0.16);
+  --ink: #121410;
+  --ink-2: #4d524a;
+  --ink-3: #8a9086;
+  --lime: #c9ff3a;
+  --green: #6fa80c;
+  --green-tint: #eefcc9;
+  --amber: #b8760a;
+  --amber-tint: #fff3d6;
+  --red: #c2372b;
+  --red-tint: #ffe4e0;
+
+  /* shadcn/ui names, mapped onto the palette above so the stock primitives
+     pick the same colours as everything hand-written. */
+  --background: var(--page);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: #ffffff;
+  --secondary: var(--inset);
+  --secondary-foreground: var(--ink);
+  --muted: var(--inset);
+  --muted-foreground: var(--ink-3);
+  --accent: var(--inset);
+  --accent-foreground: var(--ink);
+  --destructive: var(--red);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--green);
+  --verified: var(--green);
+  --caution: var(--amber);
 }
 
 @theme inline {
@@ -67,6 +60,12 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-card: 14px;
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -87,6 +86,28 @@
   --color-ring: var(--ring);
   --color-verified: var(--verified);
   --color-caution: var(--caution);
+
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-inset: var(--inset);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-lime: var(--lime);
+  --color-green: var(--green);
+  --color-green-tint: var(--green-tint);
+  --color-amber: var(--amber);
+  --color-amber-tint: var(--amber-tint);
+  --color-red: var(--red);
+  --color-red-tint: var(--red-tint);
+
+  --shadow-card: 0 1px 2px rgba(18, 20, 16, 0.04), 0 0 0 1px var(--line);
+  --shadow-raised: 0 1px 2px rgba(18, 20, 16, 0.04), 0 12px 40px -12px rgba(18, 20, 16, 0.16), 0 0 0 1px var(--line);
+  --shadow-hairline: 0 0 0 1px var(--line);
+  --shadow-btn: 0 0 0 1px var(--line), 0 1px 2px rgba(18, 20, 16, 0.06);
 }
 
 @layer base {
@@ -95,6 +116,11 @@
   }
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--lime);
+    color: var(--ink);
   }
 }
 
@@ -102,4 +128,45 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+/* ---------- motion vocabulary the components share ---------- */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pixel-on {
+  0%, 100% { opacity: 0.15; }
+  40% { opacity: 1; }
+}
+@keyframes shimmer-text {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes resolve {
+  from { opacity: 0; filter: blur(5px); transform: translateY(3px); }
+  to { opacity: 1; filter: blur(0); transform: none; }
+}
+@keyframes stamp {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
