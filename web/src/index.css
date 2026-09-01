@@ -1,15 +1,17 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* shadcn/ui, default "new-york" style on the neutral base colour, unmodified.
-   Deliberately the stock theme rather than a bespoke one: the components are
-   the shadcn components, so the tokens they expect are the shadcn tokens, and
-   anything hand-tuned here would drift the moment a component is added.
+/* shadcn/ui tokens, retuned to the owner's brand: the Ohmwork mascot --
+   white body, black face, glowing lime eyes and orbit ring. Lime is the
+   brand and the PRIMARY action colour; the page stays near-black so the
+   mascot's palette carries.
 
-   The only additions are the three STATUS colours below, which are not
-   decoration -- they carry meaning this project cannot express without them:
-   green means an outside tool confirmed it, amber means read this yourself,
-   red means nothing was returned. */
+   The three STATUS colours are not decoration -- they carry meaning this
+   project cannot express without them: green means an outside tool
+   confirmed it, amber means read this yourself, red means nothing was
+   returned. Verified-green is tuned toward the brand lime so a confirmed
+   answer and the brand read as one family, while caution and destructive
+   stay unmistakably amber and red. */
 
 @custom-variant dark (&:is(.dark *));
 
@@ -38,25 +40,25 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.13 0.006 140);
+  --foreground: oklch(0.985 0.005 140);
+  --card: oklch(0.185 0.008 140);
+  --card-foreground: oklch(0.985 0.005 140);
+  --popover: oklch(0.185 0.008 140);
+  --popover-foreground: oklch(0.985 0.005 140);
+  --primary: oklch(0.87 0.24 132);
+  --primary-foreground: oklch(0.17 0.03 132);
+  --secondary: oklch(0.25 0.01 140);
+  --secondary-foreground: oklch(0.985 0.005 140);
+  --muted: oklch(0.25 0.01 140);
+  --muted-foreground: oklch(0.70 0.01 140);
+  --accent: oklch(0.25 0.02 132);
+  --accent-foreground: oklch(0.985 0.005 140);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --verified: oklch(0.78 0.16 165);
+  --ring: oklch(0.87 0.24 132 / 45%);
+  --verified: oklch(0.82 0.19 140);
   --caution: oklch(0.82 0.14 85);
 }
 

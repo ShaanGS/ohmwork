@@ -25,9 +25,12 @@ import { Textarea } from '@/components/ui/textarea'
  */
 
 const EXAMPLES = [
-  'Design a 2-to-4 decoder with an active-high enable.',
-  'Design a 4-to-2 priority encoder with an enable input and a valid output, using basic gates only.',
-  'Design a series voltage regulator in LTspice that delivers 9 V to a 1 kOhm load from a 15 V unregulated supply. Report the output voltage and the zener current.',
+  { text: 'Design a 2-to-4 decoder with an active-high enable.',
+    domain: 'digital' },
+  { text: 'Design a 4-to-2 priority encoder with an enable input and a valid output, using basic gates only.',
+    domain: 'digital' },
+  { text: 'Design a series voltage regulator in LTspice that delivers 9 V to a 1 kOhm load from a 15 V unregulated supply. Report the output voltage and the zener current.',
+    domain: 'analog' },
 ]
 
 async function* sseStream(response) {
@@ -69,10 +72,29 @@ export default function App() {
     : <Login onIn={() => setAuthorised(true)} />
 }
 
-function Wordmark({ className = '' }) {
+function Logo({ className = '' }) {
+  // The owner's mascot, used EXACTLY as supplied (web/public/logo.png) --
+  // never redrawn. Until the file lands, the wave mark stands in, so a
+  // missing asset degrades to the old look instead of a broken image.
+  const [present, setPresent] = useState(true)
+  if (!present) {
+    return <Waves className={`text-primary ${className}`} strokeWidth={2.5} />
+  }
   return (
-    <span className={`inline-flex items-center gap-2 font-medium ${className}`}>
-      <Waves className="size-4 text-verified" strokeWidth={2.5} />
+    <img
+      src="/logo.png"
+      alt=""
+      draggable={false}
+      onError={() => setPresent(false)}
+      className={`select-none object-contain ${className}`}
+    />
+  )
+}
+
+function Wordmark({ className = '', logo = 'size-5' }) {
+  return (
+    <span className={`inline-flex items-center gap-2 font-semibold tracking-tight ${className}`}>
+      <Logo className={logo} />
       ohmwork
     </span>
   )
@@ -102,8 +124,11 @@ function Login({ onIn }) {
     <div className="flex h-full items-center justify-center p-6">
       <Card className="w-full max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-500">
         <CardContent className="space-y-4">
-          <Wordmark className="text-lg" />
-          <p className="text-sm text-muted-foreground">
+          <div className="flex flex-col items-center gap-3 pt-2 text-center">
+            <Logo className="size-24 drop-shadow-[0_0_24px_oklch(0.87_0.24_132_/_25%)]" />
+            <Wordmark className="text-xl" logo="hidden" />
+          </div>
+          <p className="text-center text-sm text-muted-foreground">
             A lab question in. A circuit file and an answer a simulator
             checked, out.
           </p>
@@ -431,28 +456,40 @@ function Intro({ onPick, status, desktop, onOpenSettings }) {
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
       <FirstRun status={status} desktop={desktop}
                 onOpenSettings={onOpenSettings} />
-      <h1 className="text-2xl font-medium tracking-tight">
-        Ask an electronics lab question.
-      </h1>
-      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-        A digital question gets a Logisim <code className="text-foreground">.circ</code>
-        {' '}and its truth table, every row computed by Logisim Evolution from
-        that exact file. An analog question gets an LTspice
-        {' '}<code className="text-foreground">.asc</code> and the measured
-        numbers, with what was checked and what was merely reported kept
-        apart. Either way, a design the simulator disagrees with is thrown
-        away and redone — nothing reaches you unchecked.
-      </p>
+      <div className="flex items-start justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Ask an electronics lab question.
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            A digital question gets a Logisim <code className="text-foreground">.circ</code>
+            {' '}and its truth table, every row computed by Logisim Evolution from
+            that exact file. An analog question gets an LTspice
+            {' '}<code className="text-foreground">.asc</code> and the measured
+            numbers, with what was checked and what was merely reported kept
+            apart. Either way, a design the simulator disagrees with is thrown
+            away and redone — nothing reaches you unchecked.
+          </p>
+        </div>
+        <Logo className="hidden size-28 shrink-0 sm:block
+                         drop-shadow-[0_0_32px_oklch(0.87_0.24_132_/_20%)]" />
+      </div>
       <div className="mt-6 space-y-2">
-        {EXAMPLES.map((example) => (
+        {EXAMPLES.map(({ text, domain }) => (
           <button
-            key={example}
-            onClick={() => onPick(example)}
-            className="block w-full rounded-lg border bg-card p-3 text-left text-sm
-                       text-muted-foreground transition-colors hover:bg-accent
+            key={text}
+            onClick={() => onPick(text)}
+            className="flex w-full items-center gap-3 rounded-lg border bg-card p-3
+                       text-left text-sm text-muted-foreground transition-colors
+                       hover:border-primary/40 hover:bg-accent
                        hover:text-accent-foreground"
           >
-            {example}
+            <Badge variant="outline"
+                   className="shrink-0 text-[10px] uppercase tracking-wider
+                              text-muted-foreground">
+              {domain}
+            </Badge>
+            <span className="min-w-0">{text}</span>
           </button>
         ))}
       </div>
@@ -479,13 +516,22 @@ function Asked({ text }) {
 }
 
 function Working({ analog }) {
+  const [seconds, setSeconds] = useState(0)
+  useEffect(() => {
+    const started = Date.now()
+    const timer = setInterval(
+      () => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
   return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground
                     animate-in fade-in">
-      <Loader2 className="size-3.5 animate-spin" />
+      <Loader2 className="size-3.5 animate-spin text-primary" />
       {analog
         ? 'working — an analog solve runs LTspice for every attempt, so this can take a few minutes'
         : 'working — a solve takes a minute'}
+      <span className="tabular-nums text-xs">{clock}</span>
     </div>
   )
 }
@@ -506,22 +552,29 @@ function Reading({ reading }) {
     <Card className="border-caution/40 bg-caution/5 animate-in fade-in
                      slide-in-from-bottom-2">
       <CardContent className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-wider text-caution">
-          the reading
-        </p>
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-caution">
+            step 1 · check the reading
+          </p>
+          <p className="text-[11px] text-caution/80">
+            the one check only you can do
+          </p>
+        </div>
         <pre className="overflow-x-auto font-mono text-[13px] leading-relaxed">
 {reading.spec || reading.intent}
         </pre>
         <Separator className="bg-caution/20" />
         <p className="text-xs leading-relaxed text-caution/90">
           {reading.basis === 'part'
-            ? `Read this. Your question names a part, so the answer is checked
+            ? `Compare this against your question before trusting anything
+               below. Your question names a part, so the answer is checked
                against that chip's own measured behaviour and the wiring map
                printed with it — not against the words above, and not against
                your question.`
-            : `Read this. Everything below is checked against it, not against
-               your question — a misreading here passes every check that
-               follows.`}
+            : `Compare this against your question before trusting anything
+               below. Every check that follows proves the circuit matches THIS
+               reading — none of them can tell whether the reading matches
+               your question.`}
         </p>
       </CardContent>
     </Card>
@@ -866,6 +919,35 @@ function Failed({ error }) {
           </p>
           <p className="text-xs leading-relaxed text-muted-foreground">
             Nothing was designed and nothing is wrong with your question.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+  // A failure at the READING stage is a different fact from a failed
+  // circuit: no circuit was ever designed, and the evaluator was never
+  // asked. The owner hit this live with the evaluator boilerplate under
+  // it, which told them their circuit failed when none existed.
+  const atReading = /^(spec|intent):/.test(error.message)
+    || error.message.startsWith('the model kept producing')
+  if (atReading) {
+    return (
+      <Card className="border-caution/40 bg-caution/5 animate-in fade-in
+                       slide-in-from-bottom-2">
+        <CardContent className="space-y-3">
+          <p className="flex items-center gap-2 text-sm text-caution">
+            <CircleAlert className="size-4" />
+            the question could not be read into a checkable form
+          </p>
+          <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-xs
+                          leading-relaxed text-muted-foreground">
+{error.message}
+          </pre>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            No circuit was designed and the evaluator was never asked —
+            this failed at the reading step. Asking again often works
+            (models vary run to run); rephrasing the question helps when it
+            does not.
           </p>
         </CardContent>
       </Card>
