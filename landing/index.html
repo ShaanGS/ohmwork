@@ -52,13 +52,16 @@
   /* ---------- nav ---------- */
   .navwrap { position: sticky; top: 14px; z-index: 20; }
   nav {
-    display: flex; align-items: center; gap: 28px; height: 58px; padding: 0 10px 0 18px;
+    display: flex; align-items: center; gap: 28px; height: 60px; padding: 0 10px 0 14px;
     background: rgba(255,255,255,0.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow);
   }
   .mark { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
   .mark img { width: 26px; height: 26px; object-fit: contain; }
-  nav .links { display: flex; gap: 26px; margin-left: auto; font-size: 14.5px; color: var(--ink-2); }
+  nav .logo { display: flex; align-items: center; }
+  nav .logo img { width: 40px; height: 40px; object-fit: contain; transition: transform .3s; }
+  nav .logo:hover img { transform: rotate(-8deg) scale(1.06); }
+  nav .links { display: flex; align-items: center; gap: 26px; margin-left: auto; font-size: 14.5px; color: var(--ink-2); }
   nav .links a { transition: color .2s; } nav .links a:hover { color: var(--ink); }
   .btn { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 15px; padding: 11px 20px; border-radius: 999px; transition: transform .2s, box-shadow .2s, background .2s; white-space: nowrap; cursor: pointer; border: 0; }
   .btn .arrow { display: inline-block; transition: transform .25s; }
@@ -277,7 +280,7 @@
 
 <div class="wrap navwrap">
   <nav>
-    <a class="mark" href="#"><img src="logo.png" alt=""> Ohmwork</a>
+    <a class="logo" href="#" aria-label="Ohmwork"><img src="logo.png" alt="Ohmwork"></a>
     <div class="links">
       <a href="#how">How it works</a>
       <a href="#why">Why it's different</a>
