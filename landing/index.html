@@ -103,35 +103,58 @@
   .fine { margin-top: 14px; font-size: 13px; color: var(--ink-3); }
   .fine b { color: var(--ink-2); font-weight: 500; }
 
-  /* the product window */
-  .demo { text-align: left; margin: 56px auto 0; max-width: 960px; background: var(--card); border: 1px solid var(--line); border-radius: 22px 22px 0 0; border-bottom: 0; box-shadow: 0 -1px 0 rgba(255,255,255,.6), 0 30px 80px -30px rgba(18,20,16,0.28); overflow: hidden; }
+  /* the product window: a scripted replay of a real solve */
+  .demo { text-align: left; margin: 56px auto 0; max-width: 960px; background: var(--card); border: 1px solid var(--line); border-radius: 22px 22px 0 0; border-bottom: 0; box-shadow: 0 -1px 0 rgba(255,255,255,.6), 0 30px 80px -30px rgba(18,20,16,0.28); overflow: hidden; cursor: pointer; }
   .demo .bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: #fafbf7; }
   .demo .bar .dots span { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #e6e8e2; }
-  .demo .bar .q { flex: 1; font-size: 13.5px; color: var(--ink-2); background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; }
+  .demo .bar .q { flex: 1; font-size: 13.5px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; display: flex; align-items: center; gap: 2px; min-height: 34px; transition: box-shadow .3s, border-color .3s; }
+  .demo .bar .q.focus { border-color: rgba(111,168,12,0.5); box-shadow: 0 0 0 3px rgba(201,255,58,0.35); }
+  .demo .bar .q .ph { color: var(--ink-3); }
+  .demo .bar .q .ph[hidden] { display: none; }
   .demo .bar .q .caret { width: 1px; height: 14px; background: var(--ink); animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
+  .demo .send { width: 34px; height: 34px; border-radius: 50%; border: 0; background: #e9ebe4; color: var(--ink-3); display: grid; place-items: center; cursor: pointer; transition: background .3s, color .3s, transform .2s; }
+  .demo .send.ready { background: var(--ink); color: #fff; }
+  .demo .send.fire { animation: fire .45s ease; }
+  @keyframes fire { 30% { transform: scale(0.82); background: var(--lime); color: var(--ink); } }
   .demo .body { display: grid; grid-template-columns: 1.05fr 1fr; min-height: 380px; }
   .demo .col { padding: 22px 24px; }
   .demo .col + .col { border-left: 1px solid var(--line); }
   .demo h4 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-family: var(--mono); color: var(--ink-3); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-  .demo h4 .tag { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--lime-soft); color: var(--lime-deep); font-weight: 600; }
+  .demo h4 .tag { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #eef0ea; color: var(--ink-3); font-weight: 600; transition: background .3s, color .3s; }
+  .demo h4 .tag.live { background: var(--lime-soft); color: var(--lime-deep); }
+  .demo h4 .tag.busy { background: var(--amber-soft); color: var(--amber); }
+  .think { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-3); min-height: 24px; margin-bottom: 8px; }
+  .think[hidden] { display: none; }
+  .dots3 { display: inline-flex; gap: 4px; }
+  .dots3 i { width: 6px; height: 6px; border-radius: 50%; background: var(--lime-deep); animation: bounce 1.1s infinite; }
+  .dots3 i:nth-child(2) { animation-delay: .15s } .dots3 i:nth-child(3) { animation-delay: .3s }
+  @keyframes bounce { 0%,60%,100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-5px); opacity: 1; } }
+  .think.idle .dots3 i { animation: none; background: #d5d8cf; }
   .log { font-family: var(--mono); font-size: 12.5px; line-height: 1.9; color: var(--ink-2); }
-  .log div { opacity: 0; transform: translateX(-6px); animation: login .4s forwards; }
+  .log div { opacity: 0; transform: translateX(-6px); animation: login .35s forwards; }
+  .log div::before { content: "[..] "; color: var(--ink-3); }
   .log .ok::before { content: "[ok] "; color: var(--lime-deep); }
   .log .no::before { content: "[no] "; color: var(--amber); }
   .log .hi { color: var(--ink); }
   @keyframes login { to { opacity: 1; transform: none; } }
-  .log div:nth-child(1){animation-delay:.3s} .log div:nth-child(2){animation-delay:.9s} .log div:nth-child(3){animation-delay:1.5s} .log div:nth-child(4){animation-delay:2.1s} .log div:nth-child(5){animation-delay:2.9s} .log div:nth-child(6){animation-delay:3.5s} .log div:nth-child(7){animation-delay:4.3s} .log div:nth-child(8){animation-delay:5.1s}
+  .skel { display: grid; gap: 10px; padding-top: 6px; }
+  .skel i { display: block; height: 14px; border-radius: 6px; background: linear-gradient(90deg, #eef0ea 25%, #f7f8f4 50%, #eef0ea 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+  .skel i:nth-child(odd) { width: 92%; } .skel i:nth-child(3n) { width: 78%; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .skel[hidden] { display: none; }
   table.tt { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12.5px; }
+  .tt[hidden] { display: none; }
   .tt th { text-align: center; color: var(--ink-3); font-weight: 500; padding: 4px 6px; border-bottom: 1px solid var(--line); }
   .tt th.sep, .tt td.sep { border-left: 1px solid var(--line); }
-  .tt td { text-align: center; padding: 4px 6px; color: var(--ink-2); border-bottom: 1px solid rgba(18,20,16,0.04); }
-  .tt tr td { opacity: 0; animation: rowin .35s forwards; }
-  .tt tr:nth-child(1) td{animation-delay:5.4s} .tt tr:nth-child(2) td{animation-delay:5.55s} .tt tr:nth-child(3) td{animation-delay:5.7s} .tt tr:nth-child(4) td{animation-delay:5.85s} .tt tr:nth-child(5) td{animation-delay:6.0s} .tt tr:nth-child(6) td{animation-delay:6.15s} .tt tr:nth-child(7) td{animation-delay:6.3s} .tt tr:nth-child(8) td{animation-delay:6.45s}
+  .tt td { text-align: center; padding: 4px 6px; color: var(--ink-2); border-bottom: 1px solid rgba(18,20,16,0.04); opacity: 0; }
+  .tt tr.in td { animation: rowin .3s forwards; }
   @keyframes rowin { to { opacity: 1; } }
   .tt td.one { color: var(--ink); font-weight: 600; background: var(--lime-soft); }
-  .verified { margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--lime-deep); background: var(--lime-soft); border-radius: 999px; padding: 6px 12px; opacity: 0; animation: rowin .4s 6.8s forwards; }
+  .verified { margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--lime-deep); background: var(--lime-soft); border-radius: 999px; padding: 6px 12px; animation: stamp .5s cubic-bezier(.2,.9,.3,1.4); }
+  .verified[hidden] { display: none; }
   .verified .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lime-deep); }
+  @keyframes stamp { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
   /* ---------- section scaffolding ---------- */
   section { padding: 110px 0; }
@@ -272,7 +295,7 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     .rv { opacity: 1; transform: none; }
-    .log div, .tt tr td, .verified, h1 .hl::after { opacity: 1; transform: none; }
+    .log div, .tt tr.in td, h1 .hl::after { opacity: 1; transform: none; }
   }
 </style>
 </head>
@@ -305,28 +328,22 @@
     </div>
     <p class="fine">Free and open source. Windows will warn about an unsigned app: pick <b>More info</b>, then <b>Run anyway</b>.</p>
 
-    <div class="demo">
+    <div class="demo" id="demo" title="Click to replay">
       <div class="bar">
         <span class="dots"><span></span><span></span><span></span></span>
-        <div class="q">Design a 2-to-4 decoder with an active-high enable<span class="caret"></span></div>
+        <div class="q"><span id="qtext"></span><span class="caret" id="caret"></span><span class="ph" id="qph">Ask an open-ended question&hellip;</span></div>
+        <button class="send" id="send" type="button" aria-label="Ask"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8h11M9 4l4 4-4 4"/></svg></button>
       </div>
       <div class="body">
         <div class="col">
-          <h4>Design loop <span class="tag">live</span></h4>
-          <div class="log">
-            <div class="ok">read as a <span class="hi">digital</span> question: gates, decoder, enable</div>
-            <div class="ok">spec written: 4 outputs from 3 inputs</div>
-            <div class="ok">plan built: 8 rows to check</div>
-            <div class="no">attempt 1 rejected: pin G2.in2 appears in two nets</div>
-            <div class="ok">attempt 2 emitted: 2 NOT, 4 AND, 7 pins</div>
-            <div class="ok">handed to <span class="hi">Logisim Evolution 4.1.0</span></div>
-            <div class="ok">8 of 8 rows match the spec</div>
-            <div class="ok"><span class="hi">decoder.circ</span> ready to download</div>
-          </div>
+          <h4>Design loop <span class="tag" id="looptag">idle</span></h4>
+          <div class="think idle" id="think"><span class="dots3"><i></i><i></i><i></i></span><span id="thinktext">waiting for a question</span></div>
+          <div class="log" id="log"></div>
         </div>
         <div class="col">
-          <h4>Truth table <span class="tag">from the evaluator</span></h4>
-          <table class="tt">
+          <h4>Truth table <span class="tag" id="tabletag">not yet</span></h4>
+          <div class="skel" id="skel"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <table class="tt" id="tt" hidden>
             <thead><tr><th>EN</th><th>A1</th><th>A0</th><th class="sep">Y0</th><th>Y1</th><th>Y2</th><th>Y3</th></tr></thead>
             <tbody>
               <tr><td>0</td><td>0</td><td>0</td><td class="sep">0</td><td>0</td><td>0</td><td>0</td></tr>
@@ -339,7 +356,7 @@
               <tr><td>1</td><td>1</td><td>1</td><td class="sep">0</td><td>0</td><td>0</td><td class="one">1</td></tr>
             </tbody>
           </table>
-          <div class="verified"><span class="dot"></span> Verified by Logisim Evolution</div>
+          <div class="verified" id="verified" hidden><span class="dot"></span> Verified by Logisim Evolution</div>
         </div>
       </div>
     </div>
@@ -564,6 +581,61 @@
   var links = Array.prototype.slice.call(document.querySelectorAll('#index a'));
   var pio = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id); }); } }); }, { rootMargin: '-40% 0px -50% 0px' });
   document.querySelectorAll('.panel').forEach(function (pn) { pio.observe(pn); });
+
+  // Hero demo: a scripted replay of the decoder solve. Type, send, think,
+  // resolve log lines one at a time, fill the table, stamp it.
+  (function () {
+    var qtext = document.getElementById('qtext'), qph = document.getElementById('qph'), qbox = qtext.parentNode;
+    var send = document.getElementById('send'), think = document.getElementById('think'), thinktext = document.getElementById('thinktext');
+    var log = document.getElementById('log'), looptag = document.getElementById('looptag'), tabletag = document.getElementById('tabletag');
+    var skel = document.getElementById('skel'), tt = document.getElementById('tt'), verified = document.getElementById('verified');
+    var question = 'Design a 2-to-4 decoder with an active-high enable';
+    var lines = [
+      ['ok', 'read as a <span class="hi">digital</span> question: gates, decoder, enable', 'reading the question'],
+      ['ok', 'spec written: 4 outputs from 3 inputs', 'writing the spec'],
+      ['ok', 'plan built: 8 rows to check', 'building the plan'],
+      ['no', 'attempt 1 rejected: pin G2.in2 appears in two nets', 'designing, attempt 1'],
+      ['ok', 'attempt 2 emitted: 2 NOT, 4 AND, 7 pins', 'designing, attempt 2'],
+      ['ok', 'handed to <span class="hi">Logisim Evolution 4.1.0</span>', 'asking the evaluator'],
+      ['ok', '8 of 8 rows match the spec', 'comparing every row'],
+      ['ok', '<span class="hi">decoder.circ</span> ready to download', 'writing the file']
+    ];
+    var run = 0, reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, reduced ? 0 : ms); }); }
+    function setTag(el, text, cls) { el.textContent = text; el.className = 'tag' + (cls ? ' ' + cls : ''); }
+    function reset() {
+      qtext.textContent = ''; qph.hidden = false; qbox.classList.remove('focus'); send.className = 'send';
+      think.hidden = false; think.classList.add('idle'); thinktext.textContent = 'waiting for a question';
+      log.innerHTML = ''; setTag(looptag, 'idle'); setTag(tabletag, 'not yet');
+      skel.hidden = false; tt.hidden = true; verified.hidden = true;
+      Array.prototype.forEach.call(tt.querySelectorAll('tbody tr'), function (r) { r.classList.remove('in'); });
+    }
+    async function play() {
+      var me = ++run; reset();
+      await wait(600); if (me !== run) return;
+      qbox.classList.add('focus'); qph.hidden = true;
+      for (var i = 1; i <= question.length; i++) { qtext.textContent = question.slice(0, i); await wait(34 + Math.random() * 30); if (me !== run) return; }
+      send.classList.add('ready'); await wait(500); if (me !== run) return;
+      send.classList.add('fire'); qbox.classList.remove('focus'); await wait(450); if (me !== run) return;
+      think.classList.remove('idle'); setTag(looptag, 'running', 'busy'); setTag(tabletag, 'waiting', 'busy');
+      for (var k = 0; k < lines.length; k++) {
+        thinktext.textContent = lines[k][2];
+        var row = document.createElement('div'); row.innerHTML = lines[k][1]; log.appendChild(row);
+        await wait(lines[k][0] === 'no' ? 1400 : 900); if (me !== run) return;
+        row.className = lines[k][0];
+        if (k === 5) {
+          skel.hidden = true; tt.hidden = false; setTag(tabletag, 'evaluating', 'busy');
+          var trs = tt.querySelectorAll('tbody tr');
+          for (var r = 0; r < trs.length; r++) { trs[r].classList.add('in'); await wait(140); if (me !== run) return; }
+        }
+      }
+      think.hidden = true; setTag(looptag, 'done', 'live'); setTag(tabletag, 'from the evaluator', 'live');
+      verified.hidden = false;
+    }
+    document.getElementById('demo').addEventListener('click', function () { play(); });
+    var seen = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { seen.disconnect(); play(); } }, { threshold: 0.25 });
+    seen.observe(document.getElementById('demo'));
+  })();
 </script>
 </body>
 </html>
