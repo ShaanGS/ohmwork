@@ -22,8 +22,9 @@
       {"from": "../desktop-backend", "to": "backend", "filter": ["**/*"]},
       {"from": "vendor/logisim", "to": "logisim", "filter": ["**/*"]}
     ],
-    "win": {"target": "nsis"},
-    "mac": {"target": "dmg", "category": "public.app-category.education"}
+    "win": {"target": "nsis", "icon": "build/icon.ico"},
+    "mac": {"target": "dmg", "category": "public.app-category.education",
+            "icon": "build/icon.png"}
   },
   "devDependencies": {
     "electron": "^36.0.0",
