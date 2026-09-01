@@ -1,66 +1,140 @@
-# ohmwork
+<div align="center">
 
-Takes an electronics-lab **open ended question** in plain English and produces
-two things: a circuit file you can open in the real tool (LTspice `.asc`,
-Logisim `.circ`), and the analysis the question actually asks for — computed by
-running a simulator, not guessed by a language model.
+<img src="landing/logo.png" alt="Ohmwork mascot" width="120" />
 
-These are ungraded self-study questions from an ECE lab. Nothing is submitted.
-The point is understanding, so the explanation matters as much as the file.
+# Ohmwork
 
----
+**Type an electronics-lab question in plain English. Get the circuit file and the answer, checked by a real simulator.**
 
-## The design principle
+[![tests](https://github.com/ShaanGS/ohmwork/actions/workflows/ci.yml/badge.svg)](https://github.com/ShaanGS/ohmwork/actions/workflows/ci.yml)
+[![docker](https://github.com/ShaanGS/ohmwork/actions/workflows/docker.yml/badge.svg)](https://github.com/ShaanGS/ohmwork/actions/workflows/docker.yml)
+[![release](https://img.shields.io/github/v/release/ShaanGS/ohmwork?label=release&color=c8f542&labelColor=1a1a1a)](https://github.com/ShaanGS/ohmwork/releases/latest)
+[![python](https://img.shields.io/badge/python-3.12%2B-3776ab?logo=python&logoColor=white)](pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+[![stars](https://img.shields.io/github/stars/ShaanGS/ohmwork?style=flat&color=c8f542&labelColor=1a1a1a)](https://github.com/ShaanGS/ohmwork/stargazers)
 
-**The simulation must come FROM the generated file, not alongside it.**
+[**Download for Windows**](https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.1.exe) · [Website](https://shaangs.github.io/ohmwork/) · [Solved library](https://shaangs.github.io/ohmwork/library/) · [Architecture](ARCHITECTURE.md) · [Product spec](PRD.md)
 
-Here is the failure that rule exists to prevent, and it is not hypothetical —
-it happened in the first hours of this project. A language model was asked for
-a series voltage regulator. It produced a SPICE netlist and an LTspice
-schematic, side by side. Both looked fine. The netlist had the zener correctly
-oriented as a shunt, cathode to the base node; the schematic had it forward
-biased. Nothing disagreed, because nothing compared them. Simulating the
-netlist "verified" a circuit that was not the circuit in the file being handed
-over.
+<br />
 
-So there is exactly one pipeline, and it has no shortcut:
+<img src="docs/readme/demo.png" alt="Ohmwork solving a 2-to-4 decoder: the design loop on the left, the truth table computed by Logisim Evolution on the right, stamped Verified" width="920" />
 
-```
-question text
-  -> a JSON circuit description: components and nets, NO coordinates
-  -> the emitter places components and writes the .asc / .circ
-  -> the simulator is handed THAT FILE
-  -> results are read back out of what the simulator produced
-```
+<sub>A real solve, replayed: one design rejected, one accepted, every row of the table computed by Logisim Evolution from the file you download.</sub>
 
-The model never produces coordinates and never produces the thing that gets
-simulated. Everything downstream of the description is deterministic Python.
-For LTspice there is a second check on top: the emitted `.asc` is read back and
-its connectivity rebuilt from the geometry alone, and the recovered netlist must
-match the description. For Logisim there is something stronger — Logisim itself
-evaluates the file we wrote.
+</div>
 
----
+<br />
 
-## A worked example
+## Why this exists
 
-`examples/q1_anchored.json`, transcribed by a human from a screenshot of the lab
-manual, section 2.14:
+Every ECE lab manual ends an experiment with an *open-ended question*: "design a 4-to-2 priority encoder with enable", "calculate the line and load regulation of the regulator shown". They are ungraded, nothing is submitted, and they are the only part of the lab where you actually have to think.
 
-> Calculate the output voltage in both load and line regulation and Zener diode
-> current in the regulator circuit shown below using LTspice.
+A language model can write you a netlist for any of them in three seconds. It can also be **confidently wrong**, and a wrong circuit simulates just as happily as a right one. Ohmwork exists to close that gap: the model may only *propose* a circuit. An outside simulator decides whether it is right, and nothing reaches you unless it agreed.
 
-The circuit is in the manual as a picture: 15 V unregulated in, 1.8 kΩ series
-resistor, 8.3 V zener from base to ground, an NPN pass transistor with β = 100,
-2 kΩ load. Run it:
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### ⚡ Digital
+Logisim `.circ` files, gate-level or with real ICs (a 7447 and a seven-segment display, for instance). **Every row** of the truth table is computed by Logisim Evolution from the emitted file and compared against the spec.
+
+</td>
+<td width="33%" valign="top">
+
+### 〜 Analog
+LTspice `.asc` files with a **human-style schematic**: routed wires, ground rail, labelled nodes. DC operating points, sweeps and transients run in LTspice itself, and the numbers the question named are checked against it.
+
+</td>
+<td width="33%" valign="top">
+
+### 🛡️ Honest
+Four outcomes, four looks. **Verified** and **measured** are different words because they are different claims. A question in the wrong domain is **refused**, not bluffed. A wrong design dies in private and is redone.
+
+</td>
+</tr>
+</table>
+
+## Quick start
+
+### The desktop app (Windows)
+
+1. [Download the installer](https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.1.exe). It is unsigned for now: at the SmartScreen prompt pick **More info → Run anyway**. Smart App Control, if it is on, has no override and must be turned off under *Windows Security → App & browser control*.
+2. Paste a free model key (Groq, Mistral or Gemini) into the key box, or an Anthropic key if you have one. It is stored in Windows' own credential store, never in a file.
+3. Have LTspice installed if you want analog questions. Logisim Evolution is **bundled**, pinned to 4.1.0.
+4. Type the question. Read the **reading** the app prints first (that is the one check only you can do), then take the file.
+
+### From source
 
 ```bash
-python -m ohmwork examples/q1_anchored.json --dry-run
+git clone https://github.com/ShaanGS/ohmwork && cd ohmwork
+pip install -e ".[llm]"
+cp .env.example .env          # put your key in it
 ```
 
-That prints every extracted value for you to check against the image, then
-exits without simulating. Drop `--dry-run` and it emits the `.asc`, runs
-LTspice headlessly on it, and reports:
+```bash
+python -m ohmwork --solve "Design a 2-to-4 decoder with an active-high enable"
+python -m ohmwork --solve "Design a series voltage regulator in LTspice that delivers 9 V to a 1k load from a 15 V supply"
+```
+
+The CLI says which half it routed the question to and why, streams every rejected design attempt with the reason, and prints the reading above the answer.
+
+<details>
+<summary><b>Run the web app locally</b></summary>
+
+```bash
+pip install -e ".[web,llm]"
+cd web && npm install && npm run build && cd ..
+OHMWORK_PASSWORD=whatever python -m ohmwork.server
+```
+
+This is the same server the desktop app wraps. Both halves are served: digital needs Logisim Evolution on the path (or `OHMWORK_LOGISIM`), analog needs LTspice (or `OHMWORK_LTSPICE`). Without LTspice an analog question is refused naming the download, never answered unverified.
+
+</details>
+
+## How it works
+
+```mermaid
+flowchart LR
+    Q([question text]) --> R{route}
+    R -->|digital| S[spec<br/>one boolean expression per output]
+    R -->|analog| I[intent<br/>one target per quantity, with tolerance]
+    S --> D[design<br/>components + nets only]
+    I --> D
+    D --> G[gate<br/>schema, pins, nets, rationales]
+    G -->|rejected, reason fed back| D
+    G --> E[emit the file<br/>deterministic Python]
+    E --> V{{outside simulator<br/>Logisim Evolution / LTspice}}
+    V -->|mismatch, rows fed back| D
+    V -->|agrees| A([file + answer + reading])
+```
+
+The model writes **intent only**: expressions, components, nets. It never writes coordinates and never writes the thing that gets simulated. The emitter places and routes deterministically, the simulator is handed **that file**, and the result is read back out of what the simulator produced. A design the simulator disagrees with is thrown away and redone. If none survives, you get an error and no file.
+
+The reason for the rule is not hypothetical. In the first hours of this project a model produced a SPICE netlist and an LTspice schematic side by side. Both looked fine. The netlist had the zener correctly as a shunt; the schematic had it forward-biased. Nothing disagreed, because nothing compared them.
+
+### What each outcome means
+
+| outcome | you see | what was established |
+|---|---|---|
+| **Verified** | green | every row of an exhaustive truth table, computed by Logisim from the emitted file, matches the spec |
+| **Measured** | lime, weaker on purpose | the circuit converged in LTspice, its devices stayed in regime (zener in breakdown, BJT active), and the figures the question *named* came out inside tolerance |
+| **Refused** | amber | the question is outside what this loop can check (an analog question typed into the digital loop, say), and the evidence is quoted |
+| **Unavailable** | grey | no model provider could answer right now; nothing about your question is implied |
+
+A measured result also prints what is **not** established: that it is a *good* design. A regulator that hits 9.00 V while dissipating six watts in the pass transistor passes every check here. Correct truth-table rows are the whole answer; correct measurements are not.
+
+## A worked example, with real numbers
+
+`examples/q1_anchored.json`, transcribed by a human from a screenshot of the lab manual:
+
+> Calculate the output voltage in both load and line regulation and Zener diode current in the regulator circuit shown below using LTspice.
+
+15 V in, 1.8 kΩ series resistor, 8.3 V zener from base to ground, an NPN pass transistor with β = 100, 2 kΩ load.
+
+```bash
+python -m ohmwork examples/q1_anchored.json --dry-run   # prints every value for you to check, then stops
+python -m ohmwork examples/q1_anchored.json             # emits the .asc, runs LTspice on it, reports
+```
 
 | quantity | value |
 |---|---|
@@ -70,424 +144,109 @@ LTspice headlessly on it, and reports:
 | line regulation, 12 V → 20 V in | **0.399224 %** |
 | load regulation, 100 kΩ → 500 Ω | **1.847626 %** |
 
-Provenance: LTspice 26.0.2.1, `F:\LTspice.exe -b -ascii`, measured 2026-08-24.
-Every one of those numbers is pinned in [`tests/baselines.py`](tests/baselines.py)
-with the backend, version, date and generating command that produced it. A bare
-float as an expected simulation value is banned in this repo.
+Provenance: LTspice 26.0.2.1, `-b -ascii`, measured 2026-08-24. Every number is pinned in [`tests/baselines.py`](tests/baselines.py) with backend, version, date and generating command, and [`tests/test_readme.py`](tests/test_readme.py) checks this table against those pins. A bare float as an expected simulation value is banned in this repo.
 
-The zener is not a real part here: the question specifies Vz = 8.3 V and names
-no device, so the tool synthesises a model card at exactly that value and says
-so in the report. Which is worth one sentence, because getting it wrong cost
-three rounds. `D(BV=8.3)` is **not** an 8.3 V zener — in SPICE, `BV` is the
-voltage at which reverse current equals `IBV`, which defaults to 1 mA, while a
-datasheet Vz is quoted at a test current. With that under-specified card,
-LTspice and ngspice disagreed about `vb` by roughly 0.4 V and the argument was
-about which simulator to trust. With the current one, `D(BV=8.3 IBV=5m)`,
-LTspice gives 8.292139 V and ngspice gives 8.292262 V: **123 µV apart on two
-independently written simulators.** When two simulators disagree, suspect an
-under-specified device before suspecting the simulators.
+**The part worth a student's time:** across the full load sweep, `vb` moves from 8.292391 V to 8.291356 V, about **1 mV**, while `vout` drops from 7.585122 V to 7.447520 V, about **138 mV**. The output moves 133 times further than the node that is supposed to be setting it. Essentially none of this regulator's load regulation comes from the zener sagging. It is V<sub>BE</sub> rising with emitter current. That falls out of the sweep data, and it answers the question in a way a percentage does not.
 
-**And this is the part that is actually worth a student's time.** Across the
-full load sweep, `vb` moves from 8.292391 V to 8.291356 V — about **1 mV** —
-while `vout` drops from 7.585122 V to 7.447520 V, about **138 mV**. The output
-moves 133 times further than the node that is supposed to be setting it. So
-essentially none of this regulator's load regulation comes from the zener
-sagging; it is Vbe rising with emitter current. That falls out of the sweep
-data, and it is the answer to the question in a way a percentage is not.
+<details>
+<summary><b>Why the zener is a synthesised model, and why <code>D(BV=8.3)</code> is not an 8.3 V zener</b></summary>
 
-### The other two
+The question specifies Vz = 8.3 V and names no device, so the tool synthesises a model card at exactly that value and says so in the report. In SPICE, `BV` is the voltage at which reverse current equals `IBV`, which defaults to 1 mA, while a datasheet Vz is quoted at a test current. With the under-specified card `D(BV=8.3)`, LTspice and ngspice disagreed about `vb` by roughly 0.4 V and the argument was about which simulator to trust. With `D(BV=8.3 IBV=5m)`, LTspice gives 8.292139 V and ngspice gives 8.292262 V: **123 µV apart on two independently written simulators.** When two simulators disagree, suspect an under-specified device before suspecting the simulators.
 
-```bash
-python -m ohmwork examples/q3.json --dry-run   # bridge + C-L-C + zener, transient
-python -m ohmwork examples/q2.json --dry-run   # 4-to-2 priority encoder, Logisim
-```
+</details>
 
-Q2 also has two asks no measurement can answer. `--write-prose` sends the
-**selected evidence rows and nothing else** — not the circuit, not the
-netlist, not the rest of the table — to Claude, shows you what came back, and
-saves it into the question file only if you say yes. That constraint is the
-point: with nothing but the printed rows to work from, anything the caption
-says that the rows do not support is visible as unsupported.
+## What it cannot verify
 
-```bash
-python -m ohmwork examples/q2.json --write-prose
-```
+This is the section that matters, and none of it is softened.
 
-Needs the model layer configured — see below. Without it the command says so
-and carries on; every other result is unaffected, and no test in this repo
-touches the network.
-
-Q3 is a design question: the topology is given in prose, but the series
-resistor value is ours, so it is marked `designed`, carries a rationale, and
-renders in its own section headed *"these are choices, not given"*. Q2 is
-digital: 32 rows, evaluated by Logisim, with the three digital regime
-assertions checked and reported.
-
----
-
-## What the tool CANNOT verify
-
-This is the section that matters. None of it is softened.
-
-**The `.plt` plot-settings file has no machine check of any kind.** LTspice's
-batch mode does not read plot files, so nothing this repo can run will tell you
-whether the panes render correctly. Its format was transcribed from real files
-shipped with LTspice rather than invented, and that is the entire basis for
-believing it. Its only real check is a human opening one in the GUI, once. The
-CLI prints `UNVERIFIED` next to every `.plt` it writes, and the published
-manifest carries the same statement, because an artefact with no verification
-path must say so everywhere it ships.
-
-**Simulation cannot catch a misread question.** If the vision layer reads
-`1.8k` as `1.8M`, or `470 µF` as `470 pF`, the resulting circuit is wrong but
-perfectly self-consistent. It emits, it round-trips, it converges, and it
-reports a confident number that answers a question nobody asked. There is no
-downstream check that can catch this, because every downstream check is
-checking internal agreement. The only defence is a human comparing the
-extracted values against the original image, which is what `--dry-run` exists
-for and why it prints values before anything else.
-
-**The geometric round trip proves self-consistency, not correctness.** The
-emitter and the `.asc` parser both import the same pin table. A wrong pin
-offset makes the emitter place a flag at the wrong coordinate and makes the
-parser look for it at the same wrong coordinate, and the round trip passes.
-The only ground truth for those offsets is measurement against real hand-drawn
-files, which is why every symbol in the table has a corresponding real-file
-test and why no offset may be added from a datasheet or from documentation.
-
-**Without Logisim installed, digital results are computed by our own
-evaluator.** That means one program produces both the answer and anything the
-answer would be checked against; a bug in it breaks both sides identically and
-they agree forever. Such results are labelled `internal` at every level — in
-the report, in the manifest, and in the library index — and the library refuses
-to publish one without a warning attached. With Logisim present the results are
-`external` and carry the same standing as LTspice's.
-
-**Prose is not verified and cannot be.** "Explain your design choices" has no
-computable answer. The best available is *local falsifiability*: for
-"discuss how your circuit behaves when multiple inputs are active", the tool
-selects the rows of the truth table where two or more inputs are high, prints
-them, and puts the sentence directly underneath, so you can check the claim
-against the evidence without leaving the page. That makes the prose checkable.
-It does not make it verified, and the section says so in its header.
-
-A stored caption can also go **stale**, which is subtler and worse. It is
-saved into the question file so the library regenerates identically — and it
-then outlives the rows it describes. Change a gate, re-run, and the same
-confident sentence sits over different evidence while still looking grounded.
-So every stored answer records a fingerprint of the rows it was reviewed
-against, and each run reports `fresh`, `STALE`, or `evidence not recorded` —
-that last one being its own state, never quietly folded into "fresh".
-
-**A hand-drawn file is not necessarily a valid file.** One of the real fixtures
-in this repo declares all fourteen of its pins as inputs — including four
-driven by adder outputs — and leaves one XOR input unwired, with the wire meant
-to feed it dead-ending ten units short. It is kept precisely because it is
-wrong. Anything reading real input has to survive that and report it, not
-assume the input is correct.
-
----
+- **Simulation cannot catch a misread question.** Read `1.8k` as `1.8M`, or an enable as active-low when the question meant active-high, and the spec, the circuit and the simulator all agree with each other perfectly. That is why the **reading** is printed first, in its own colour, as step one: it is the one check only a human can do.
+- **The `.plt` plot-settings file has no machine check of any kind.** LTspice's batch mode does not read plot files. Its format was transcribed from real files shipped with LTspice, and the CLI prints `UNVERIFIED` beside every one it writes.
+- **The LTspice round trip proves self-consistency, not correctness.** The emitter and the `.asc` parser share one pin table, so a wrong pin offset is invisible to it. Every symbol in that table is therefore measured against real hand-drawn files, never taken from a datasheet.
+- **Without Logisim installed, digital results come from our own evaluator**, which then computes both the answer and anything the answer would be checked against. Such results are labelled `internal` everywhere they appear. The desktop app bundles Logisim so this never happens there.
+- **Prose is not verified and cannot be.** "Explain your design choices" has no computable answer. The best available is *local falsifiability*: the tool prints the truth-table rows the sentence is about directly above the sentence, so you can check one against the other without leaving the page.
 
 ## Why the defences look excessive
 
-They do look excessive. Here is the reason, which is that on this project
-**careful reasoning has lost to a mechanical check four times**, and every one
-of those times the reasoning felt settled beforehand.
+On this project, careful reasoning has lost to a mechanical check **twenty-four times**, and every time the reasoning felt settled beforehand. Each incident is a row in [ARCHITECTURE.md](ARCHITECTURE.md#3-the-incident-table), paired with the defence that now exists because of it. A few:
 
-1. **The zener orientation.** A netlist and a schematic, emitted together,
-   reviewed, both plausible. They disagreed. Only simulating the generated file
-   found it. → the design principle above.
+| what looked right | what was true | defence now |
+|---|---|---|
+| A netlist and a schematic emitted together, both reviewed | the zener was a shunt in one and forward-biased in the other | simulate the generated file, never a netlist beside it |
+| "Logisim has no batch simulator, so digital can never be externally verified" | `logisim-evolution --tty table` prints the whole truth table. Nobody had run the command | every digital result is computed by Logisim from the emitted file |
+| A priority encoder **verified in one attempt, 32 of 32 rows** | the spec itself was a wrong encoder, and the circuit implemented it faithfully | a deterministic gate brute-forces whether any priority order explains the spec's own table |
+| A 7447 answer checked against the model's spec | the spec was the model's *memory* of a datasheet, and it was wrong: a real 7447 shows a nought for 0000 | the bare chip is probed in the same evaluator first; the design must reproduce what the chip actually does |
+| An analog question typed into the digital loop, **VERIFIED** in green | the model wrote 12 V RMS waveforms as boolean signals and Logisim confirmed that the wires computed the wires | a domain screen before any model call, a refusal channel, and a check that a spec contains logic at all |
+| A seven-segment display lit correctly in the truth table | on screen every digit was its photographic negative, because display polarity was never in the checked surface | polarity is an explicit choice, checked against what feeds it, and disclosed in the wiring map |
 
-2. **`.step` ordering.** A sweep listed its values in the question's order, and
-   the derived regulation figure was computed by indexing that order. LTspice
-   runs `.step LIST` in ascending numeric order regardless of how it is
-   written, which silently flips the sign of a derived quantity. → point
-   selection now parses the requested value and finds it in the axis trace the
-   raw file itself recorded.
+Two rules fall out of all this and are enforced throughout: **never pin a plausible number** (measure it or delete it), and **an unrun check must announce itself** (silence is indistinguishable from a pass, so the dry run, the report and the published manifest all list what ran and what did not, with reasons).
 
-3. **The crossing rule.** In Logisim, does a wire crossing another wire connect
-   to it? The two readings are indistinguishable on screen, and arguing about
-   it produced confident answers in both directions. What settled it was
-   counting: under "crossings connect", a student's working encoder has two
-   nets with five drivers each, shorting all four data inputs together —
-   electrically impossible. Under "crossings do not connect", 13 nets, every
-   port wired, exactly one driver each. → the rule is pinned in both
-   directions, with fixtures.
+## The solved library
 
-4. **The router's channel band.** The emitter's wire-routing geometry was
-   reasoned about carefully, written up in the module docstring as structurally
-   safe, and believed correct. On its very first run `validate_wiring` reported
-   that the vertical channel band overlapped the next column's input x: the
-   4-input OR gate's ports sit at exactly x=190, inside the band, shorting two
-   data inputs. The bug was in gap arithmetic that double-counted the gate
-   body. The check earned its place immediately, on code specifically written
-   to make that failure impossible.
-
-There is a fifth of a different kind, worth listing because it is the most
-uncomfortable: this project spent weeks believing Logisim had no batch
-simulator, and documented the resulting "evaluator asymmetry" as permanent and
-unavoidable. It has one. `logisim-evolution --tty table` enumerates every input
-combination and prints the truth table. A carefully reasoned architectural
-constraint rested on a factual error nobody had checked by running the command.
-
-Two rules follow from all of this and are enforced throughout:
-
-- **Never pin a plausible number.** Measure it or delete it. Every expected
-  simulation value carries structured provenance. This exists because estimated
-  regulation figures were once nearly written straight into tests as pins —
-  and unlike a wrong device model, which a simulator catches, a wrong pin
-  corrupts the reference itself, after which every downstream check agrees with
-  the error.
-- **An unrun check must announce itself.** A check that can be skipped has to
-  say it was skipped, in the output. Silence is indistinguishable from a pass,
-  and a reader looking at a clean screen cannot tell whether everything was
-  examined and found good or whether nothing was examined at all. The dry run
-  has a `checks` section listing what ran and what did not, with reasons; the
-  published manifest carries the same list; and the library index flags any
-  question with skipped checks. The same rule applies in mirror image to
-  checks that pass — every regime assertion reports what it examined, so
-  "held" is never confusable with "nobody looked".
-
----
-
-## What ships: the library
-
-LTspice is a Windows GUI application. It does not run on a server, and
-substituting ngspice would not help: ngspice cannot read LTspice's device
-libraries, so every question naming a real part would fall back to a
-synthesised model and answer a slightly different question. So a hosted
-ohmwork cannot simulate, and the architecture says so plainly:
-
-| piece | role |
-|---|---|
-| the CLI | the **generator**. Runs locally, where the simulators are. |
-| `library/` | the **product**. Per question: the input JSON, the circuit file, every result with full provenance, and the explanation. Committed. |
-| the site | a **viewer**. Static. No backend, no simulation, no model in the hot path. |
-
-A question that is not in the library shows **"not solved yet"**, which is a
-real answer rather than a failure state. There is deliberately no third path
-that looks like an instant answer but is secretly unverified generation.
-
-Write an entry with:
-
-```bash
-python -m ohmwork examples/q1_anchored.json --library library --id exp02-series-regulator
-```
-
-The manifest is a published contract, and it refuses to publish: a result with
-no backend named, an unreliable result with no reason, a deliverable marked
-verified with no statement of *how*, a deliverable marked unverified with no
-reason, a designed value with no rationale, prose evidence that does not name
-what computed it, a prose answer with no recorded authorship, or any unknown
-key anywhere. `generated` is passed in rather than read from the clock, so
-regenerating an unchanged question produces a byte-identical file — a library
-that churns cannot be reviewed.
-
-### Currently seeded
+Every question solved and reviewed is published with its input, its circuit file, every result with provenance, and the explanation. The [site](https://shaangs.github.io/ohmwork/library/) is a static viewer over it: no backend, no database, and **it adds no facts**. Every claim on a page comes from a manifest field, and the manifest is copied in beside the page so the rendering is auditable without running any code.
 
 | id | experiment | target | evaluator |
 |---|---|---|---|
 | `exp02-series-regulator` | 2.14, series voltage regulator | LTspice | LTspice 26.0.2.1 |
-| `exp03-regulated-supply` | 3, bridge + C-L-C + zener | LTspice | LTspice 26.0.2.1 |
-| `exp08-priority-encoder` | 8.2, 4-to-2 priority encoder | Logisim 2.7.1 | Logisim Evolution 4.1.0 |
+| `exp03-regulated-supply` | 3, bridge + C-L-C filter + zener | LTspice | LTspice 26.0.2.1 |
+| `exp08-priority-encoder` | 8.2, 4-to-2 priority encoder, 32 rows | Logisim 2.7.1 | Logisim Evolution 4.1.0 |
 
-Three, not more, because three is how many questions we have verbatim text for
-and can currently solve. Experiment 9.7 (BCD to seven-segment with a 7447) has
-its text in `examples/drafts/q4_question.md` but is blocked: the 7447 and the
-seven-segment display live in Logisim Evolution's TTL and I/O libraries, and
-no component's geometry may be added to this repo without being measured from
-a real file containing it. Padding the count with an invented question would
-be worse than a short list.
-
-### The site
-
-The viewer renders the library into plain static HTML — no backend, no
-database, no JavaScript, nothing fetched from the network:
+The manifest is a published contract. It refuses a result with no backend named, an unreliable result with no reason, a deliverable marked verified with no statement of *how*, a designed value with no rationale, and any unknown key anywhere. Regenerating an unchanged question produces a byte-identical file, because a library that churns cannot be reviewed.
 
 ```bash
+python -m ohmwork examples/q1_anchored.json --library library --id exp02-series-regulator
 python -m ohmwork --library library --build-site site
 ```
 
-It needs no simulator, because it computes nothing. **The viewer adds no
-facts:** every claim on a page comes from a manifest field. It does not round
-a number, does not infer a verification status from a backend name, and does
-not decide a result looks fine. Each question's `manifest.json` and
-`question.json` are copied in beside the page, so the rendering is auditable
-against the record it was rendered from without running any of this code.
+## Configuration
 
-It refuses rather than degrades. An invalid manifest, a missing deliverable,
-a download whose bytes no longer match the published sha256, or an index
-listing questions the library does not hold — each stops the build. And the
-project's oldest rule reaches an audience here: a page states in words that
-no checks were skipped, and prints every regime assertion that HELD along
-with what it examined, because a quiet page must never be indistinguishable
-from an unexamined one.
-
-### Solving from the command line
-
-A question typed in plain English, a circuit file and the analysis back:
-
-```bash
-python -m ohmwork --solve "Design a 2-to-4 decoder with an active-high enable"
-python -m ohmwork --solve "Design a series voltage regulator in LTspice that
-                           delivers 9 V to a 1k load from a 15 V supply"
-```
-
-It routes by reading the question and says which way it went, because that is
-a guess made from words. Getting it wrong is safe -- the loop it picks runs
-its own domain check and refuses with the reason -- and `--domain` overrides.
-
-**The two halves do not make the same claim, and the output says so.** A
-digital answer is checked against an exhaustive truth table computed by
-Logisim from the emitted file: every row, nothing left over. An analog answer
-has no such table to be checked against. What is established there is that the
-circuit converged, that its devices stayed in the operating regimes the
-results depend on, and that the numbers the question NAMED came out where the
-question said they should -- and that leaves a gap with no digital
-counterpart, printed with every result:
-
-> **NOT established by any check here:** ... that what came back is a good
-> design. Meeting a target is not being good: a regulator that hits its
-> voltage while dissipating six watts in the pass transistor, or with ripple
-> nobody asked about, satisfies everything here.
-
-Three things keep the analog check from being decorative. A tolerance is
-capped, because one wide enough to admit any plausible circuit cannot fail. An
-intent with no targets at all is refused. And the regime assertions are
-derived from the parts list rather than requested, so a design cannot omit the
-one that would have failed. A quantity the question gave no number for is
-reported and counted separately as **not checked** -- a run in which nothing
-could fail must not read like one in which nothing did.
-
-### The live service (digital only)
-
-A question typed in plain English, a Logisim circuit file and a truth table
-back:
-
-```bash
-pip install -e ".[web,llm]"
-cd web && npm install && npm run build && cd ..
-OHMWORK_PASSWORD=whatever python -m ohmwork.server
-```
-
-The whole design loop runs server-side, and **Logisim Evolution runs there
-too** -- so the table served is one an outside tool computed by evaluating the
-exact file offered for download. A design the evaluator disagrees with is
-thrown away and redone; if none survives, the answer is an error rather than a
-circuit.
-
-This rewrites a rule rather than breaking one. The old rule said *no model in
-the hot path*, on the grounds that the server could not simulate. That is
-permanently true for **analog** -- LTspice is a Windows GUI application, and
-ngspice cannot read its device libraries -- and it was simply false for
-digital. So analog is not served here at all -- it runs on the command line,
-locally, where LTspice is -- and the rule now reads: *no response may carry a
-circuit or a table the evaluator did not confirm, and every response names the
-evaluator that confirmed it.*
-
-The reading the loop worked from is printed above the answer, in warning
-colour, because that is the one failure none of this machinery can catch: a
-misread question produces a specification and a circuit that agree perfectly
-with each other.
-
-Deployment is one container -- `Dockerfile` and `DEPLOY.md`. CI builds it on
-every push and then, inside it, runs Logisim under a real display, requires an
-anonymous solve to get a 401, requires the built page to be served, and
-requires a container with no password to refuse to start. That workflow's
-first four runs were all red, each for a different real defect, which is
-exactly what it is for: the image is the one artefact here that no unit test
-can check, and its first execution should not be a live deploy.
-
-**Where it runs is not settled.** The requirement is a host that runs a
-Dockerfile with a JVM for 10-60 seconds per request, which rules out every
-static and serverless platform. Hugging Face Spaces was the recommendation
-until its Docker SDK became paid; `DEPLOY.md` carries the current options and
-what each one costs.
-
----
-
-## What it is not
-
-Not a homework-answer service. These questions are ungraded self-study
-questions with no submission attached, and the tool is built for the case where
-you want to understand the circuit — which is why the explanation, the design
-choices, and the *reasons* behind each number are treated as part of the
-deliverable rather than decoration around it.
-
-It will not produce a beautiful schematic. Layout is mechanical: for LTspice a
-row of components on a grid, for Logisim inputs in a left column, gates in
-columns by logic depth, and orthogonal wires crossing freely. The output says
-so when it writes one, because a student opening a generated file and expecting
-something hand-drawn would reasonably conclude the tool was broken. A real
-placer is future work.
-
----
-
-## Requirements
-
-- Python 3.12+, `spicelib`
-- LTspice, for analog questions. Set `OHMWORK_LTSPICE` if it is not in a
-  standard location.
-- Logisim Evolution, for digital ones. Set `OHMWORK_LOGISIM` to override. If it
-  is absent, digital results fall back to the internal evaluator and are
-  labelled `internal` everywhere they appear.
-- ngspice is optional and exists only to keep the pipeline testable on
-  Linux/CI. It cannot read LTspice's device libraries, so its numbers differ by
-  design and are never shown to a student.
-
-### The model layer (optional)
-
-Only needed for generated prose and, later, extraction. Everything else —
-every simulation, measurement, regime check and library entry — works without
-it.
-
-```bash
-pip install -e ".[llm]"
-```
-
-Then copy the template and put your key in it:
-
-```bash
-cp .env.example .env
-```
-
-Open `.env` and replace `gsk_replace_me` with your key from
-[console.groq.com](https://console.groq.com). That is the whole setup — no
-terminal restart, no `setx`.
-
-`.env` is gitignored, and the ignore rule was added **before** the file
-existed, because a key committed once lives in the git history forever even
-after you delete it from the working tree. `.env.example` is the committed
-template and holds no real values.
-
-A real environment variable, if you set one, wins over the file — setting one
-is the more deliberate act, and a stray `.env` must never outrank a CI secret.
-There is no CLI flag that takes a key: flags end up in shell history, in
-screenshots, and in the process list.
+Keys live in the environment only. There is no config-file path and no CLI flag that takes a key: flags end up in shell history and screenshots, and a key committed once lives in git history forever.
 
 | variable | meaning |
 |---|---|
-| `GROQ_API_KEY` | the key. Free tier at console.groq.com |
-| `OHMWORK_LLM` | `groq` (default) or `anthropic` |
-| `OHMWORK_LLM_MODEL` | model id; overrides the built-in default |
+| `GROQ_API_KEY`, `MISTRAL_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` … | provider keys; set the ones you have |
+| `OHMWORK_LLM` | `groq` (default), `mistral`, `gemini`, `anthropic`, or `pool` to rotate across every configured provider when one rate-limits |
+| `OHMWORK_LLM_MODEL` | model id override. `python -m ohmwork --list-models` prints what your account can actually serve |
+| `OHMWORK_LTSPICE` | path to `LTspice.exe` if it is not in a standard location |
+| `OHMWORK_LOGISIM` | path to Logisim Evolution; the desktop app sets this to its bundled copy |
 
-**Model ids are not stable and this repo does not pretend otherwise.** Hosted
-catalogues change faster than a checked-in default will, so the built-in one
-will be wrong eventually. When it is, you get the list of what your account
-can actually serve rather than a bare 404 — and you can ask for it directly:
+Model ids drift; when the built-in default goes stale you get the list of what your account serves rather than a bare 404.
 
-```bash
-python -m ohmwork --list-models
+## Repository map
+
+```
+ohmwork/
+  design.py, spec.py        digital design loop: spec → plan → design → gate → verify
+  analog.py, intent.py      analog design loop: intent → design → gate → simulate → compare
+  domain.py                 routes a question, refuses the wrong domain with the evidence quoted
+  emitter.py, parser.py     LTspice .asc: placement, routing, and geometric read-back
+  logisim_emitter.py        Logisim .circ: columns by logic depth, orthogonal routing
+  partcheck.py              probes a real IC in the evaluator and predicts the design through it
+  simulate.py, logisim_backend.py   the outside simulators, each declaring how it verifies
+  llm.py                    the only module that talks to a model; provider pool lives here
+  server.py                 FastAPI, streams the loop to the page; wrapped by the desktop app
+  library.py, viewer.py     the published manifest contract and the static viewer
+web/                        React + Vite page (light, hairline, lime keyed to the mascot)
+desktop/                    Electron shell, bundles Logisim 4.1.0 + a jlink runtime
+landing/                    the public front door
+library/                    solved, reviewed, published questions
+tests/                      800+ tests; every simulation number carries provenance
 ```
 
-Where the model call happens is an architectural rule, not a preference: it
-runs **locally, at generation time, with a human at the dry-run gate**. The
-published site is a static viewer over `library/` and never calls a model. If
-a request path ever imports `ohmwork/llm.py`, that rule has been broken.
+## Development
 
 ```bash
 python -m pytest
 ```
 
-Tests that need a simulator skip cleanly when it is absent, and say which one
-they wanted.
+Tests that need a simulator skip cleanly when it is absent and say which one they wanted, so the suite is green on a machine with neither. CI runs exactly that configuration on Linux; the `docker` workflow builds the server image and runs Logisim inside it under a real display before anything is called deployable.
+
+macOS is source-only and digital-only for now: LTspice exists there, but no baseline in this project has been measured on it, and this project does not claim numbers it has not measured.
+
+## What it is not
+
+Not a homework-answer service. These are ungraded self-study questions with no submission attached, and the tool is built for the case where you want to *understand* the circuit, which is why the design choices and the reasons behind each number are treated as part of the deliverable rather than decoration around it.
+
+<div align="center">
+<br />
+<sub>MIT licensed. Built for the SRM ECE batch, open to anyone with a lab manual and a question.</sub>
+</div>
