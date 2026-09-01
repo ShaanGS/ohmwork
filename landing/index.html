@@ -4,242 +4,563 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ohmwork</title>
-<meta name="description" content="A lab question in. A circuit file and an answer a real simulator checked, out.">
+<meta name="description" content="Type your electronics lab question. A real simulator checks the circuit. You get the file.">
 <link rel="icon" type="image/png" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+  /* Light, airy, one brand colour. The mascot's lime is the accent; the sky
+     tints behind the hero and the closing band are that lime and a cool
+     mint/sky pulled far toward white. Every demo on the page shows a real
+     solve (the 2-to-4 decoder, the 9 V regulator, the 7447 probe). */
   :root {
-    --bg: #faf9f5;
-    --panel: #f1efe8;
-    --line: #e4e1d7;
-    --ink: #1a1a17;
-    --grey: #82806f;
-    --accent: #5c9407;   /* the mascot's lime, deepened for light ground */
+    --bg: #fbfcf9;
+    --ink: #121410;
+    --ink-2: #4d524a;
+    --ink-3: #8a9086;
+    --line: rgba(18,20,16,0.09);
+    --card: #ffffff;
+    --lime: #c9ff3a;
+    --lime-deep: #6fa80c;
+    --lime-soft: #eefcc9;
+    --mint: #d9f7ef;
+    --sky: #dcefff;
+    --peach: #fff0dc;
+    --amber: #b8760a;
+    --amber-soft: #fff3d6;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --serif: "Instrument Serif", Georgia, serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --r: 20px;
+    --shadow: 0 1px 2px rgba(18,20,16,0.04), 0 12px 40px -12px rgba(18,20,16,0.14);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  body {
-    background: var(--bg); color: var(--ink);
-    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-    font-size: 15px; line-height: 1.55;
-    -webkit-font-smoothing: antialiased;
-  }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
   a { color: inherit; text-decoration: none; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 32px; }
+  ::selection { background: var(--lime); color: var(--ink); }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 28px; }
+  .mono { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .serif { font-family: var(--serif); font-weight: 400; letter-spacing: -0.015em; }
+
+  /* ---------- reveal on scroll ---------- */
+  .rv { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
+  .rv.in { opacity: 1; transform: none; }
+  .rv.d1 { transition-delay: .08s } .rv.d2 { transition-delay: .16s } .rv.d3 { transition-delay: .24s } .rv.d4 { transition-delay: .32s }
 
   /* ---------- nav ---------- */
-  nav { display: flex; align-items: center; padding: 18px 0; gap: 28px; }
-  .mark { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
-  .mark img { width: 26px; height: 26px; object-fit: contain; }
-  nav .links { display: flex; gap: 24px; margin-left: auto; font-size: 14px; color: #55534a; }
-  nav .links a:hover { color: var(--ink); }
-  .pill {
-    background: var(--ink); color: #fff; font-size: 14px; font-weight: 500;
-    padding: 8px 18px; border-radius: 999px; white-space: nowrap;
+  .navwrap { position: sticky; top: 14px; z-index: 20; }
+  nav {
+    display: flex; align-items: center; gap: 28px; height: 58px; padding: 0 10px 0 18px;
+    background: rgba(255,255,255,0.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow);
   }
-  .pill:hover { background: #33322d; }
+  .mark { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+  .mark img { width: 26px; height: 26px; object-fit: contain; }
+  nav .links { display: flex; gap: 26px; margin-left: auto; font-size: 14.5px; color: var(--ink-2); }
+  nav .links a { transition: color .2s; } nav .links a:hover { color: var(--ink); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 15px; padding: 11px 20px; border-radius: 999px; transition: transform .2s, box-shadow .2s, background .2s; white-space: nowrap; cursor: pointer; border: 0; }
+  .btn .arrow { display: inline-block; transition: transform .25s; }
+  .btn:hover .arrow { transform: translate(2px,-2px); }
+  .btn-dark { background: var(--ink); color: #fff; }
+  .btn-dark:hover { background: #2a2d27; transform: translateY(-1px); box-shadow: 0 10px 24px -10px rgba(18,20,16,0.5); }
+  .btn-light { background: #fff; color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .btn-light:hover { transform: translateY(-1px); }
+  .btn-lime { background: var(--lime); color: var(--ink); }
+  .btn-lime:hover { background: #d6ff66; transform: translateY(-1px); box-shadow: 0 10px 24px -10px rgba(111,168,12,0.6); }
+  nav .btn { padding: 9px 16px; font-size: 14px; }
 
   /* ---------- hero ---------- */
-  .hero { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center; padding: 88px 0 96px; }
-  .eyebrow { font-size: 15px; color: #55534a; margin-bottom: 10px; }
-  h1 { font-size: clamp(34px, 4.6vw, 52px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 600; }
-  h1 .dim { color: #a3a191; }
-  .hero .lead { margin-top: 22px; font-size: 16px; color: #55534a; max-width: 30em; }
-  .cta { margin-top: 30px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .btn-primary {
-    background: var(--ink); color: #fff; font-weight: 500; font-size: 15px;
-    padding: 12px 24px; border-radius: 999px;
+  .sky {
+    position: relative; overflow: hidden;
+    background:
+      radial-gradient(60% 50% at 20% 10%, var(--lime-soft) 0%, transparent 60%),
+      radial-gradient(50% 45% at 85% 15%, var(--sky) 0%, transparent 60%),
+      radial-gradient(60% 40% at 50% 90%, var(--mint) 0%, transparent 60%),
+      radial-gradient(40% 35% at 80% 75%, var(--peach) 0%, transparent 60%),
+      var(--bg);
+    background-size: 160% 160%; animation: drift 24s ease-in-out infinite alternate;
+    margin-top: -72px; padding-top: 72px;
   }
-  .btn-primary:hover { background: #33322d; }
-  .btn-ghost {
-    font-size: 15px; font-weight: 500; padding: 12px 22px;
-    border: 1px solid var(--line); border-radius: 999px; background: #fff;
-  }
-  .btn-ghost:hover { border-color: #c9c5b6; }
-  .fine { margin-top: 16px; font-size: 13px; color: var(--grey); }
-  .fine b { color: #55534a; font-weight: 500; }
+  @keyframes drift { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+  .hero { text-align: center; padding: 72px 0 0; }
+  .hero .mascot { width: 168px; height: auto; margin: 0 auto 8px; display: block; animation: bob 5s ease-in-out infinite; filter: drop-shadow(0 18px 24px rgba(18,20,16,0.14)); }
+  @keyframes bob { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-10px) rotate(2deg); } }
+  .chip { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); background: rgba(255,255,255,0.7); border: 1px solid var(--line); padding: 7px 14px 7px 10px; border-radius: 999px; box-shadow: var(--shadow); margin-bottom: 26px; }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lime-deep); box-shadow: 0 0 0 0 rgba(111,168,12,0.5); animation: ping 2.2s infinite; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(111,168,12,0.45); } 70% { box-shadow: 0 0 0 9px rgba(111,168,12,0); } 100% { box-shadow: 0 0 0 0 rgba(111,168,12,0); } }
+  h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(46px, 7.4vw, 92px); line-height: 1.0; letter-spacing: -0.02em; max-width: 12em; margin: 0 auto; text-wrap: balance; }
+  h1 .hl { position: relative; white-space: nowrap; isolation: isolate; }
+  h1 .hl::after { content: ""; position: absolute; left: -2%; right: -2%; bottom: 18%; height: 30%; background: var(--lime); z-index: -1; border-radius: 4px; transform: scaleX(0); transform-origin: left; animation: swipe .7s .5s cubic-bezier(.2,.7,.2,1) forwards; }
+  @keyframes swipe { to { transform: scaleX(1); } }
+  .sub { margin: 22px auto 0; font-size: 19px; color: var(--ink-2); max-width: 34em; text-wrap: balance; }
+  .cta { margin-top: 30px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+  .cta .btn { padding: 14px 24px; font-size: 16px; }
+  .fine { margin-top: 14px; font-size: 13px; color: var(--ink-3); }
+  .fine b { color: var(--ink-2); font-weight: 500; }
 
-  .hero-art {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
-    display: flex; align-items: center; justify-content: center; padding: 40px;
-    min-height: 380px;
-  }
-  .hero-art img { width: min(78%, 330px); height: auto; }
+  /* the product window */
+  .demo { text-align: left; margin: 56px auto 0; max-width: 960px; background: var(--card); border: 1px solid var(--line); border-radius: 22px 22px 0 0; border-bottom: 0; box-shadow: 0 -1px 0 rgba(255,255,255,.6), 0 30px 80px -30px rgba(18,20,16,0.28); overflow: hidden; }
+  .demo .bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: #fafbf7; }
+  .demo .bar .dots span { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #e6e8e2; }
+  .demo .bar .q { flex: 1; font-size: 13.5px; color: var(--ink-2); background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; }
+  .demo .bar .q .caret { width: 1px; height: 14px; background: var(--ink); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .demo .body { display: grid; grid-template-columns: 1.05fr 1fr; min-height: 380px; }
+  .demo .col { padding: 22px 24px; }
+  .demo .col + .col { border-left: 1px solid var(--line); }
+  .demo h4 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-family: var(--mono); color: var(--ink-3); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .demo h4 .tag { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--lime-soft); color: var(--lime-deep); font-weight: 600; }
+  .log { font-family: var(--mono); font-size: 12.5px; line-height: 1.9; color: var(--ink-2); }
+  .log div { opacity: 0; transform: translateX(-6px); animation: login .4s forwards; }
+  .log .ok::before { content: "[ok] "; color: var(--lime-deep); }
+  .log .no::before { content: "[no] "; color: var(--amber); }
+  .log .hi { color: var(--ink); }
+  @keyframes login { to { opacity: 1; transform: none; } }
+  .log div:nth-child(1){animation-delay:.3s} .log div:nth-child(2){animation-delay:.9s} .log div:nth-child(3){animation-delay:1.5s} .log div:nth-child(4){animation-delay:2.1s} .log div:nth-child(5){animation-delay:2.9s} .log div:nth-child(6){animation-delay:3.5s} .log div:nth-child(7){animation-delay:4.3s} .log div:nth-child(8){animation-delay:5.1s}
+  table.tt { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12.5px; }
+  .tt th { text-align: center; color: var(--ink-3); font-weight: 500; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .tt th.sep, .tt td.sep { border-left: 1px solid var(--line); }
+  .tt td { text-align: center; padding: 4px 6px; color: var(--ink-2); border-bottom: 1px solid rgba(18,20,16,0.04); }
+  .tt tr td { opacity: 0; animation: rowin .35s forwards; }
+  .tt tr:nth-child(1) td{animation-delay:5.4s} .tt tr:nth-child(2) td{animation-delay:5.55s} .tt tr:nth-child(3) td{animation-delay:5.7s} .tt tr:nth-child(4) td{animation-delay:5.85s} .tt tr:nth-child(5) td{animation-delay:6.0s} .tt tr:nth-child(6) td{animation-delay:6.15s} .tt tr:nth-child(7) td{animation-delay:6.3s} .tt tr:nth-child(8) td{animation-delay:6.45s}
+  @keyframes rowin { to { opacity: 1; } }
+  .tt td.one { color: var(--ink); font-weight: 600; background: var(--lime-soft); }
+  .verified { margin-top: 16px; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--lime-deep); background: var(--lime-soft); border-radius: 999px; padding: 6px 12px; opacity: 0; animation: rowin .4s 6.8s forwards; }
+  .verified .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lime-deep); }
 
   /* ---------- section scaffolding ---------- */
-  section { padding: 72px 0; border-top: 1px solid var(--line); }
-  .kicker { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
-  .kicker + .kicker-sub { color: #a3a191; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  section { padding: 110px 0; }
+  .sh { text-align: center; margin-bottom: 48px; }
+  .sh h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(36px, 4.6vw, 56px); line-height: 1.05; letter-spacing: -0.02em; text-wrap: balance; }
+  .sh h2 img { height: .9em; vertical-align: -0.12em; margin: 0 .1em; }
+  .sh p { margin: 14px auto 0; color: var(--ink-2); font-size: 17px; max-width: 34em; text-wrap: balance; }
 
-  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-top: 36px; }
-  .cell { background: var(--panel); padding: 24px 22px 28px; }
-  .cell h3 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
-  .cell p { font-size: 14px; color: #55534a; }
-  .cell .more { display: inline-block; margin-top: 14px; font-size: 14px; font-weight: 500; color: var(--accent); }
+  /* ---------- how it works: stepped panel ---------- */
+  .how { background: linear-gradient(135deg, #e3ffa1 0%, #d3f7ea 38%, #d9ecff 70%, #ffe9d2 100%); border-radius: 28px; padding: 40px; display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 32px; align-items: stretch; }
+  .stage { background: var(--card); border-radius: 16px; box-shadow: var(--shadow); min-height: 360px; position: relative; overflow: hidden; }
+  .stage .win { position: absolute; inset: 0; padding: 22px 24px; opacity: 0; transform: translateY(10px); transition: opacity .45s, transform .45s; }
+  .stage .win.on { opacity: 1; transform: none; }
+  .stage .tl { display: flex; gap: 6px; margin-bottom: 18px; } .stage .tl span { width: 10px; height: 10px; border-radius: 50%; background: #e6e8e2; }
+  .stage .tl span:nth-child(1){background:#ff5f57} .stage .tl span:nth-child(2){background:#febc2e} .stage .tl span:nth-child(3){background:#28c840}
+  .steps { display: flex; flex-direction: column; gap: 10px; }
+  .step { text-align: left; background: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.6); border-radius: 14px; padding: 16px 18px; cursor: pointer; transition: background .3s, transform .3s, box-shadow .3s; font: inherit; color: inherit; }
+  .step:hover { background: rgba(255,255,255,0.7); }
+  .step.on { background: #fff; box-shadow: var(--shadow); transform: translateX(-4px); }
+  .step .t { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
+  .step .t .k { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  .step .d { color: var(--ink-2); font-size: 14.5px; margin-top: 6px; display: none; }
+  .step.on .d { display: block; }
+  .step .bar { height: 2px; background: rgba(18,20,16,0.08); margin-top: 12px; border-radius: 2px; overflow: hidden; display: none; }
+  .step.on .bar { display: block; }
+  .step .bar i { display: block; height: 100%; width: 0; background: var(--lime-deep); animation: fill 5s linear forwards; }
+  @keyframes fill { to { width: 100%; } }
+  .typed { font-size: 15px; color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-height: 84px; }
+  .typed::after { content: ""; display: inline-block; width: 1px; height: 1em; background: var(--ink); vertical-align: -2px; margin-left: 2px; animation: blink 1s steps(2) infinite; }
+  .spec { font-family: var(--mono); font-size: 13px; line-height: 2; color: var(--ink-2); }
+  .spec b { color: var(--ink); font-weight: 500; }
+  .spec .op { color: var(--lime-deep); }
+  .note { margin-top: 14px; font-size: 13px; color: var(--amber); background: var(--amber-soft); border-radius: 10px; padding: 10px 12px; }
+  .filecard { display: flex; align-items: center; gap: 14px; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-top: 14px; }
+  .filecard .ic { width: 40px; height: 48px; border-radius: 6px; background: var(--lime-soft); display: grid; place-items: center; font-family: var(--mono); font-size: 10px; color: var(--lime-deep); font-weight: 600; }
+  .filecard .n { font-weight: 600; font-size: 14.5px; } .filecard .m { font-size: 12.5px; color: var(--ink-3); }
+  .filecard .dl { margin-left: auto; font-size: 13px; font-weight: 600; color: var(--lime-deep); }
+  svg.schem { width: 100%; height: auto; display: block; }
+  svg.schem .w { stroke: var(--ink-2); stroke-width: 1.4; fill: none; }
+  svg.schem .g { stroke: var(--ink); stroke-width: 1.6; fill: #fff; }
+  svg.schem text { font-family: var(--mono); font-size: 9px; fill: var(--ink-2); }
+  svg.schem .live { stroke: var(--lime-deep); stroke-width: 2; stroke-dasharray: 6 4; animation: flow 1.2s linear infinite; }
+  @keyframes flow { to { stroke-dashoffset: -20; } }
 
-  /* ---------- how it works ---------- */
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 36px; }
-  .step .num { font-size: 13px; font-weight: 600; color: var(--accent); letter-spacing: 0.06em; }
-  .step h3 { font-size: 16px; font-weight: 600; margin: 8px 0 8px; letter-spacing: -0.01em; }
-  .step p { font-size: 14px; color: #55534a; }
+  /* ---------- bento ---------- */
+  .bento { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 300px; gap: 14px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; position: relative; overflow: hidden; transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s; display: flex; flex-direction: column; }
+  .tile:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+  .tile h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .tile p { color: var(--ink-2); font-size: 14.5px; margin-top: 6px; max-width: 28em; text-wrap: pretty; }
+  .tile .art { margin-top: auto; }
+  .c3 { grid-column: span 3; } .c2 { grid-column: span 2; } .c4 { grid-column: span 4; } .c6 { grid-column: span 6; } .r2 { grid-row: span 2; }
+  .tile.tint-lime { background: linear-gradient(160deg, #f4ffd6, #fff 60%); }
+  .tile.tint-amber { background: linear-gradient(160deg, #fff5e0, #fff 60%); }
+  .tile.tint-sky { background: linear-gradient(160deg, #e8f3ff, #fff 60%); }
+  .tile.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .tile.dark p { color: rgba(255,255,255,0.65); }
+  .badge { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; border-radius: 999px; padding: 5px 11px; }
+  .badge.v { background: var(--lime-soft); color: var(--lime-deep); }
+  .badge.m { background: var(--amber-soft); color: var(--amber); }
+  .badge.r { background: #ffe4e0; color: #b3261e; }
+  .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .rows-anim { display: grid; grid-template-columns: repeat(8, 1fr); gap: 5px; }
+  .rows-anim i { display: block; height: 8px; border-radius: 3px; background: rgba(18,20,16,0.08); animation: tick 3.2s infinite; }
+  .rows-anim i:nth-child(8n+1){animation-delay:0s} .rows-anim i:nth-child(8n+2){animation-delay:.1s} .rows-anim i:nth-child(8n+3){animation-delay:.2s} .rows-anim i:nth-child(8n+4){animation-delay:.3s} .rows-anim i:nth-child(8n+5){animation-delay:.4s} .rows-anim i:nth-child(8n+6){animation-delay:.5s} .rows-anim i:nth-child(8n+7){animation-delay:.6s} .rows-anim i:nth-child(8n+8){animation-delay:.7s}
+  @keyframes tick { 0%,10% { background: rgba(18,20,16,0.08); } 25%,80% { background: var(--lime-deep); } 95%,100% { background: rgba(18,20,16,0.08); } }
+  .refusal { border: 1px solid #f2dcae; background: #fffaf0; border-radius: 12px; padding: 12px 14px; font-size: 13px; color: var(--ink-2); }
+  .refusal b { color: var(--amber); font-weight: 600; display: block; margin-bottom: 4px; }
+  .meter { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+  .meter .big { font-family: var(--serif); font-size: 48px; line-height: 1; color: var(--ink); letter-spacing: -0.02em; }
+  .meter .big small { font-size: 22px; color: var(--ink-3); margin-left: 4px; }
+  .meter .track { height: 6px; background: rgba(18,20,16,0.08); border-radius: 3px; margin: 10px 0 6px; position: relative; }
+  .meter .track .range { position: absolute; left: 40%; width: 20%; height: 100%; background: var(--lime-soft); border-radius: 3px; }
+  .meter .track .pin { position: absolute; top: -4px; width: 14px; height: 14px; border-radius: 50%; background: var(--lime-deep); border: 2px solid #fff; left: calc(50% - 7px); animation: settle 2.4s ease-out forwards; }
+  @keyframes settle { 0% { left: 8%; } 60% { left: 52%; } 100% { left: 46.7%; } }
+  .attempts { display: flex; gap: 8px; align-items: center; }
+  .attempts span { font-family: var(--mono); font-size: 12px; padding: 5px 9px; border-radius: 8px; border: 1px solid var(--line); color: var(--ink-3); }
+  .attempts span.x { text-decoration: line-through; }
+  .attempts span.ok { border-color: var(--lime-deep); color: var(--lime-deep); font-weight: 600; }
+  .keylock { display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 12.5px; color: rgba(255,255,255,0.7); }
+  .keylock .k { flex: 1; letter-spacing: 0.2em; overflow: hidden; white-space: nowrap; }
+  .keylock .lock { width: 34px; height: 34px; border-radius: 10px; background: var(--lime); color: var(--ink); display: grid; place-items: center; }
+  .probe { display: grid; grid-template-columns: repeat(32, 1fr); gap: 3px; }
+  .probe i { aspect-ratio: 1; border-radius: 2px; background: rgba(18,20,16,0.07); animation: probe 4s infinite; }
+  @keyframes probe { 0%,15% { background: rgba(18,20,16,0.07); } 30%,85% { background: var(--lime-deep); } 100% { background: rgba(18,20,16,0.07); } }
 
-  /* ---------- honesty ---------- */
-  .claims { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px 56px; }
-  .claims p { font-size: 15px; color: #55534a; }
-  .claims b { color: var(--ink); font-weight: 600; display: block; margin-bottom: 6px; font-size: 15px; }
+  /* ---------- rule: sticky index + panels ---------- */
+  .rule { background: var(--ink); color: #fff; border-radius: 28px; padding: 80px 56px; }
+  .rule .sh h2, .rule .sh p { color: #fff; } .rule .sh p { color: rgba(255,255,255,0.65); }
+  .rule .grid { display: grid; grid-template-columns: 300px 1fr; gap: 64px; align-items: start; }
+  .index { position: sticky; top: 100px; }
+  .index a { display: flex; gap: 14px; padding: 16px 0; border-top: 1px solid rgba(255,255,255,0.12); color: rgba(255,255,255,0.5); font-size: 16px; transition: color .3s; }
+  .index a:last-child { border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .index a .k { font-family: var(--mono); font-size: 12px; padding-top: 4px; }
+  .index a.on { color: #fff; }
+  .panel { padding-bottom: 72px; }
+  .panel .frame { background: #171a16; border: 1px solid rgba(255,255,255,0.09); border-radius: 18px; padding: 40px; min-height: 260px; display: grid; place-items: center; }
+  .panel h3 { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; margin-top: 28px; }
+  .panel p { color: rgba(255,255,255,0.65); font-size: 16.5px; margin-top: 10px; max-width: 34em; text-wrap: pretty; }
+  .vsm { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .vsm .c { background: #fff; color: var(--ink); border-radius: 14px; padding: 18px 20px; width: 220px; }
+  .vsm .c .t { font-size: 13px; color: var(--ink-3); margin-top: 10px; }
+  .vsm .c .n { font-family: var(--serif); font-size: 30px; line-height: 1.1; margin-top: 4px; }
+  .readcard { background: #fff; color: var(--ink); border-radius: 14px; padding: 18px 20px; width: 100%; max-width: 420px; }
+  .readcard .h { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+  .readcard .l { display: flex; justify-content: space-between; font-size: 14px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .readcard .l span:last-child { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+  .readcard .ok { margin-top: 12px; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
+  .readcard .ok .tick { width: 18px; height: 18px; border-radius: 50%; background: var(--lime); display: grid; place-items: center; font-size: 11px; }
+  .loop { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  .loop .n { background: #fff; color: var(--ink); border-radius: 999px; padding: 10px 16px; font-size: 14px; font-weight: 500; }
+  .loop .n.x { background: #2a2d27; color: rgba(255,255,255,0.5); text-decoration: line-through; }
+  .loop .n.v { background: var(--lime); }
+  .loop .a { color: rgba(255,255,255,0.35); }
 
-  /* ---------- band ---------- */
-  .band { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
-  .band p { color: #55534a; max-width: 36em; margin-top: 8px; }
+  /* ---------- closing band + footer ---------- */
+  .band { text-align: center; padding: 120px 0; border-radius: 28px;
+    background: radial-gradient(50% 60% at 15% 30%, #f1ffc8 0%, transparent 60%), radial-gradient(45% 55% at 85% 40%, var(--sky) 0%, transparent 60%), radial-gradient(40% 40% at 50% 100%, var(--mint) 0%, transparent 60%), #fff; }
+  .band h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(38px, 5vw, 60px); line-height: 1.05; letter-spacing: -0.02em; }
+  .band p { color: var(--ink-2); margin-top: 14px; font-size: 17px; }
+  .band .cta { margin-top: 28px; }
+  footer { padding: 56px 0 24px; }
+  footer .cols { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 32px; font-size: 14px; color: var(--ink-2); }
+  footer .cols h5 { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 12px; }
+  footer .cols a { display: block; margin-bottom: 8px; } footer .cols a:hover { color: var(--ink); }
+  footer .big { margin-top: 56px; font-family: var(--serif); font-size: clamp(80px, 16vw, 220px); line-height: .9; text-align: center; color: transparent; -webkit-text-stroke: 1px rgba(18,20,16,0.18); letter-spacing: -0.02em; user-select: none; }
 
-  footer { border-top: 1px solid var(--line); padding: 28px 0 48px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--grey); }
-  footer a:hover { color: var(--ink); }
-
-  @media (max-width: 860px) {
-    .hero { grid-template-columns: 1fr; padding: 48px 0 56px; }
-    .hero-art { min-height: 280px; order: -1; }
-    .grid4 { grid-template-columns: 1fr 1fr; }
-    .steps, .claims { grid-template-columns: 1fr; gap: 28px; }
+  @media (max-width: 900px) {
+    .wrap { padding: 0 18px; }
+    nav .links a:not(.btn) { display: none; }
+    .demo .body { grid-template-columns: 1fr; } .demo .col + .col { border-left: 0; border-top: 1px solid var(--line); }
+    .how { grid-template-columns: 1fr; padding: 18px; } .stage { min-height: 320px; }
+    .bento { grid-template-columns: 1fr 1fr; grid-auto-rows: auto; } .bento .tile { min-height: 220px; } .c3,.c2,.c4,.c6 { grid-column: span 2; } .r2 { grid-row: auto; }
+    .rule { padding: 48px 22px; } .rule .grid { grid-template-columns: 1fr; gap: 24px; } .index { position: static; display: flex; overflow-x: auto; } .index a { border: 0; white-space: nowrap; padding: 8px 12px 8px 0; }
+    footer .cols { grid-template-columns: 1fr; }
+    section { padding: 72px 0; }
   }
-  @media (max-width: 520px) { .grid4 { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    .rv { opacity: 1; transform: none; }
+    .log div, .tt tr td, .verified, h1 .hl::after { opacity: 1; transform: none; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<div class="wrap navwrap">
   <nav>
     <a class="mark" href="#"><img src="logo.png" alt=""> Ohmwork</a>
     <div class="links">
       <a href="#how">How it works</a>
+      <a href="#why">Why it's different</a>
       <a href="library/">Solved library</a>
       <a href="https://github.com/ShaanGS/ohmwork">GitHub</a>
+      <!-- releases/latest/download survives asset re-uploads; update the
+           filename when the version bumps. -->
+      <a class="btn btn-dark" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">Download <span class="arrow">&#8599;</span></a>
     </div>
-    <a class="pill" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">Download</a>
   </nav>
+</div>
 
-  <div class="hero">
-    <div>
-      <p class="eyebrow">Ohmwork, for electronics lab work</p>
-      <h1>Your lab question in.<br>
-          <span class="dim">A simulator-checked circuit out.</span></h1>
-      <p class="lead">
-        Type an open-ended question in plain English. Ohmwork designs the
-        circuit, makes a real simulator prove it — Logisim Evolution for
-        digital, LTspice for analog — and hands you the circuit file with
-        the answer.
-      </p>
-      <div class="cta">
-        <!-- releases/latest/download survives asset re-uploads; update the
-             filename when the version bumps. -->
-        <a class="btn-primary" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">Download for Windows</a>
-        <a class="btn-ghost" href="library/">Browse solved questions</a>
-      </div>
-      <p class="fine">
-        Free, ~240&nbsp;MB, digital evaluator included. Windows flags unsigned
-        apps — choose <b>More info&nbsp;&rarr;&nbsp;Run anyway</b>.
-      </p>
+<div class="sky">
+  <div class="wrap hero">
+    <img class="mascot" src="logo.png" alt="The Ohmwork mascot">
+    <div class="chip"><span class="dot"></span> Every answer checked by a real simulator</div>
+    <h1>Go from lab question to a <span class="hl">verified</span> circuit</h1>
+    <p class="sub">No guessing, no hand-drawn netlists, no wrong answers in green. Type the question, get the file.</p>
+    <div class="cta">
+      <a class="btn btn-dark" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">Download for Windows <span class="arrow">&#8599;</span></a>
+      <a class="btn btn-light" href="library/">See solved questions</a>
     </div>
-    <div class="hero-art">
-      <img src="logo.png" alt="The Ohmwork mascot">
+    <p class="fine">Free and open source. Windows will warn about an unsigned app: pick <b>More info</b>, then <b>Run anyway</b>.</p>
+
+    <div class="demo">
+      <div class="bar">
+        <span class="dots"><span></span><span></span><span></span></span>
+        <div class="q">Design a 2-to-4 decoder with an active-high enable<span class="caret"></span></div>
+      </div>
+      <div class="body">
+        <div class="col">
+          <h4>Design loop <span class="tag">live</span></h4>
+          <div class="log">
+            <div class="ok">read as a <span class="hi">digital</span> question: gates, decoder, enable</div>
+            <div class="ok">spec written: 4 outputs from 3 inputs</div>
+            <div class="ok">plan built: 8 rows to check</div>
+            <div class="no">attempt 1 rejected: pin G2.in2 appears in two nets</div>
+            <div class="ok">attempt 2 emitted: 2 NOT, 4 AND, 7 pins</div>
+            <div class="ok">handed to <span class="hi">Logisim Evolution 4.1.0</span></div>
+            <div class="ok">8 of 8 rows match the spec</div>
+            <div class="ok"><span class="hi">decoder.circ</span> ready to download</div>
+          </div>
+        </div>
+        <div class="col">
+          <h4>Truth table <span class="tag">from the evaluator</span></h4>
+          <table class="tt">
+            <thead><tr><th>EN</th><th>A1</th><th>A0</th><th class="sep">Y0</th><th>Y1</th><th>Y2</th><th>Y3</th></tr></thead>
+            <tbody>
+              <tr><td>0</td><td>0</td><td>0</td><td class="sep">0</td><td>0</td><td>0</td><td>0</td></tr>
+              <tr><td>0</td><td>0</td><td>1</td><td class="sep">0</td><td>0</td><td>0</td><td>0</td></tr>
+              <tr><td>0</td><td>1</td><td>0</td><td class="sep">0</td><td>0</td><td>0</td><td>0</td></tr>
+              <tr><td>0</td><td>1</td><td>1</td><td class="sep">0</td><td>0</td><td>0</td><td>0</td></tr>
+              <tr><td>1</td><td>0</td><td>0</td><td class="sep one">1</td><td>0</td><td>0</td><td>0</td></tr>
+              <tr><td>1</td><td>0</td><td>1</td><td class="sep">0</td><td class="one">1</td><td>0</td><td>0</td></tr>
+              <tr><td>1</td><td>1</td><td>0</td><td class="sep">0</td><td>0</td><td class="one">1</td><td>0</td></tr>
+              <tr><td>1</td><td>1</td><td>1</td><td class="sep">0</td><td>0</td><td>0</td><td class="one">1</td></tr>
+            </tbody>
+          </table>
+          <div class="verified"><span class="dot"></span> Verified by Logisim Evolution</div>
+        </div>
+      </div>
     </div>
   </div>
-
-  <section>
-    <p class="kicker">Every answer is checked before you see it</p>
-    <p class="kicker-sub">The model designs. A real simulator decides.</p>
-    <div class="grid4">
-      <div class="cell">
-        <h3>Externally verified</h3>
-        <p>Digital answers are evaluated row by row by Logisim Evolution
-           running the actual emitted file. Analog answers are simulated by
-           LTspice and checked against the question&rsquo;s own figures,
-           operating regimes included.</p>
-      </div>
-      <div class="cell">
-        <h3>Refuses instead of bluffing</h3>
-        <p>Sequential logic, unmeasured parts, analog without LTspice —
-           refused with the reason named. A wrong answer is structurally
-           harder than no answer.</p>
-      </div>
-      <div class="cell">
-        <h3>The file is the answer</h3>
-        <p>You get the <code>.circ</code> or <code>.asc</code> the simulator
-           actually checked, drawn the way a person draws it. Open it in the
-           real tool and keep working.</p>
-      </div>
-      <div class="cell">
-        <h3>Nothing hidden</h3>
-        <p>Every result states what was checked, by which tool, and what no
-           check can establish. Rejected attempts are shown, not hidden.</p>
-        <a class="more" href="library/">See real solves &rarr;</a>
-      </div>
-    </div>
-  </section>
-
-  <section id="how">
-    <p class="kicker">How it works</p>
-    <div class="steps">
-      <div class="step">
-        <span class="num">01</span>
-        <h3>Install</h3>
-        <p>The digital evaluator is bundled — decoder and gate questions work
-           out of the box. For analog, install
-           <a style="color: var(--accent); font-weight: 500;"
-              href="https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html">LTspice</a>
-           (free); the app tells you if it&rsquo;s missing.</p>
-      </div>
-      <div class="step">
-        <span class="num">02</span>
-        <h3>Add a free model key</h3>
-        <p>The first-run screen links to free signups and stores your key
-           encrypted on your machine. It is never uploaded by Ohmwork.</p>
-      </div>
-      <div class="step">
-        <span class="num">03</span>
-        <h3>Ask, then check the reading</h3>
-        <p>Every answer starts with how your question was understood. The
-           simulator proves the circuit matches that reading — confirming the
-           reading matches your question is the one check that&rsquo;s yours.</p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <p class="kicker">Built on one rule</p>
-    <p class="kicker-sub">The model never grades its own work.</p>
-    <div class="claims">
-      <p><b>Wrong designs die in private.</b> A circuit the simulator
-         disagrees with is thrown away and redone. If nothing passes, you get
-         an honest failure — never a confident guess.</p>
-      <p><b>Chips are measured, not remembered.</b> A question naming a 7447
-         is checked against a real 7447&rsquo;s own evaluated behaviour, not
-         against anyone&rsquo;s memory of a datasheet.</p>
-      <p><b>Weaker claims look weaker.</b> Analog results say
-         &ldquo;measured&rdquo;, never &ldquo;verified&rdquo; — checking a few
-         numbers is a smaller promise than checking every row, and the app
-         refuses to let the two look alike.</p>
-      <p><b>Every published number is traceable.</b> The
-         <a style="color: var(--accent); font-weight: 500;" href="library/">solved library</a>
-         carries the files, the tool versions, and the checks behind each
-         answer — audit it without trusting us.</p>
-    </div>
-  </section>
-
-  <section>
-    <div class="band">
-      <div>
-        <p class="kicker">Ready when you are</p>
-        <p>One installer, a free key, and your next open-ended question.</p>
-      </div>
-      <a class="btn-primary" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">Download for Windows</a>
-    </div>
-  </section>
-
-  <footer>
-    <span>MIT licensed · built for the SRM ECE lab batch</span>
-    <span><a href="https://github.com/ShaanGS/ohmwork/issues">Report a wrong answer</a></span>
-  </footer>
 </div>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sh rv">
+      <h2>How <img src="logo.png" alt="Ohmwork"> works</h2>
+      <p>Four steps. Three of them are automatic. The second one is the one worth reading.</p>
+    </div>
+    <div class="how rv d1">
+      <div class="stage">
+        <div class="win on" data-step="0">
+          <div class="tl"><span></span><span></span><span></span></div>
+          <div class="typed" id="typed"></div>
+          <p style="margin-top:14px;font-size:13.5px;color:var(--ink-3)">Plain English. Paste the question exactly as the lab manual wrote it.</p>
+        </div>
+        <div class="win" data-step="1">
+          <div class="tl"><span></span><span></span><span></span></div>
+          <div class="spec">
+            <b>Y0</b> = EN <span class="op">&amp;</span> ~A1 <span class="op">&amp;</span> ~A0<br>
+            <b>Y1</b> = EN <span class="op">&amp;</span> ~A1 <span class="op">&amp;</span> &nbsp;A0<br>
+            <b>Y2</b> = EN <span class="op">&amp;</span> &nbsp;A1 <span class="op">&amp;</span> ~A0<br>
+            <b>Y3</b> = EN <span class="op">&amp;</span> &nbsp;A1 <span class="op">&amp;</span> &nbsp;A0
+          </div>
+          <div class="note">Step 1 of every answer: check this is what your question meant. Enable read as active-high.</div>
+        </div>
+        <div class="win" data-step="2">
+          <div class="tl"><span></span><span></span><span></span></div>
+          <div class="log" id="log2">
+            <div class="no">attempt 1: pin G2.in2 appears in two nets</div>
+            <div class="ok">attempt 2: emitted, handed to Logisim Evolution</div>
+            <div class="ok">8 of 8 rows match</div>
+          </div>
+          <div class="attempts" style="margin-top:16px"><span class="x">attempt 1</span><span class="ok">attempt 2 &middot; verified</span></div>
+        </div>
+        <div class="win" data-step="3">
+          <div class="tl"><span></span><span></span><span></span></div>
+          <svg class="schem" viewBox="0 0 360 150" aria-hidden="true">
+            <text x="6" y="27">EN</text><text x="6" y="67">A1</text><text x="6" y="107">A0</text>
+            <path class="w" d="M26 24 H150 M26 64 H70 M26 104 H70"/>
+            <rect class="g" x="70" y="54" width="26" height="20" rx="3"/><text x="76" y="68">NOT</text>
+            <rect class="g" x="70" y="94" width="26" height="20" rx="3"/><text x="76" y="108">NOT</text>
+            <path class="w" d="M96 64 H150 M96 104 H150 M40 64 V130 H150 M52 104 V140 H150"/>
+            <path class="g" d="M150 14 h22 a12 12 0 0 1 0 24 h-22 z"/>
+            <path class="g" d="M150 48 h22 a12 12 0 0 1 0 24 h-22 z"/>
+            <path class="g" d="M150 82 h22 a12 12 0 0 1 0 24 h-22 z"/>
+            <path class="g" d="M150 116 h22 a12 12 0 0 1 0 24 h-22 z"/>
+            <path class="w live" d="M184 26 H300"/><path class="w" d="M184 60 H300 M184 94 H300 M184 128 H300"/>
+            <text x="308" y="29">Y0</text><text x="308" y="63">Y1</text><text x="308" y="97">Y2</text><text x="308" y="131">Y3</text>
+          </svg>
+          <div class="filecard"><div class="ic">.circ</div><div><div class="n">decoder.circ</div><div class="m">the exact file Logisim evaluated</div></div><span class="dl">Download</span></div>
+        </div>
+      </div>
+      <div class="steps" id="steps">
+        <button class="step on"><div class="t"><span class="k">01</span> Ask</div><div class="d">Type the question in plain language. Digital or analog, it gets routed to the right simulator.</div><div class="bar"><i></i></div></button>
+        <button class="step"><div class="t"><span class="k">02</span> Check the reading</div><div class="d">Ohmwork shows how it understood the question before anything is built. This is the one check only you can do.</div><div class="bar"><i></i></div></button>
+        <button class="step"><div class="t"><span class="k">03</span> Design, then prove</div><div class="d">The model designs the circuit. Logisim or LTspice checks it. Wrong designs are thrown away and redone.</div><div class="bar"><i></i></div></button>
+        <button class="step"><div class="t"><span class="k">04</span> Get the file</div><div class="d">You download the exact file the simulator checked, drawn the way a person draws it. Open it and keep working.</div><div class="bar"><i></i></div></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="why" style="padding-top:0">
+  <div class="wrap">
+    <div class="sh rv">
+      <h2>Built so a wrong answer is harder than no answer</h2>
+      <p>Everything below is something the app actually does, not a promise.</p>
+    </div>
+    <div class="bento">
+      <div class="tile c3 tint-lime rv">
+        <span class="badge v"><span class="dot"></span> Verified</span>
+        <h3 style="margin-top:12px">Every row, checked by an outside tool</h3>
+        <p>Digital answers are evaluated exhaustively by Logisim Evolution running the actual emitted file. Not our code checking our code.</p>
+        <div class="art rows-anim" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="tile c3 tint-amber rv d1">
+        <span class="badge m"><span class="dot"></span> Refused</span>
+        <h3 style="margin-top:12px">Refuses instead of bluffing</h3>
+        <p>Sequential logic, unmeasured parts, analog without LTspice: refused, with the reason named.</p>
+        <div class="art refusal"><b>Not a digital question</b>It names LTspice, a rectifier, 470 uF and a Zener. Use the analog path. No model was asked.</div>
+      </div>
+      <div class="tile c2 rv d2">
+        <span class="badge m"><span class="dot"></span> Measured</span>
+        <h3 style="margin-top:12px">Analog too, with the honest word</h3>
+        <p>LTspice checks the design against the question's own figures. A smaller promise than every row, so it's never called "verified".</p>
+        <div class="art meter">
+          <div class="big">8.855<small>V</small></div>
+          <div class="track"><div class="range"></div><div class="pin"></div></div>
+          target 9 V &plusmn; 5% &middot; zener in breakdown &middot; BJT active
+        </div>
+      </div>
+      <div class="tile c2 tint-sky rv d2">
+        <h3>Wrong designs die in private</h3>
+        <p>A circuit the simulator disagrees with is thrown away and redone. You see the rejected attempts, not just the winner.</p>
+        <div class="art attempts"><span class="x">1</span><span class="x">2</span><span class="x">3</span><span class="ok">4 &middot; met the intent</span></div>
+      </div>
+      <div class="tile c2 dark rv d3">
+        <h3>Your key. Your machine.</h3>
+        <p>Bring a free model key. It's stored encrypted on your laptop and never uploaded by Ohmwork.</p>
+        <div class="art keylock"><span class="k">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span><span class="lock">&#128274;&#xFE0E;</span></div>
+      </div>
+      <div class="tile c6 rv d3">
+        <h3>Chips are measured, not remembered</h3>
+        <p style="max-width:40em">Name a 7447 and Ohmwork probes a real one in the evaluator first, all 128 input rows, then checks your design against that. Nobody's memory of a datasheet is involved.</p>
+        <div class="art probe" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="rule rv">
+      <div class="sh">
+        <h2>Built on one rule</h2>
+        <p>The model never grades its own work.</p>
+      </div>
+      <div class="grid">
+        <div class="index" id="index">
+          <a href="#r1" class="on"><span class="k">01</span> A simulator decides</a>
+          <a href="#r2"><span class="k">02</span> Weaker claims look weaker</a>
+          <a href="#r3"><span class="k">03</span> The one check that's yours</a>
+        </div>
+        <div>
+          <div class="panel" id="r1">
+            <div class="frame">
+              <div class="loop"><span class="n">model designs</span><span class="a">&rarr;</span><span class="n x">attempt 1</span><span class="a">&rarr;</span><span class="n x">attempt 2</span><span class="a">&rarr;</span><span class="n v">Logisim agrees</span></div>
+            </div>
+            <h3>Nothing reaches you unless an outside tool agreed</h3>
+            <p>The model writes the circuit. Logisim Evolution or LTspice runs the emitted file. If the tool disagrees, the design is thrown away and the tool's objection goes back to the model. If nothing passes, you get an honest failure.</p>
+          </div>
+          <div class="panel" id="r2">
+            <div class="frame">
+              <div class="vsm">
+                <div class="c"><span class="badge v"><span class="dot"></span> Verified</span><div class="t">Digital &middot; every row</div><div class="n">8 / 8 rows</div></div>
+                <div class="c"><span class="badge m"><span class="dot"></span> Measured</span><div class="t">Analog &middot; stated figures</div><div class="n">8.855 V</div></div>
+                <div class="c"><span class="badge r"><span class="dot"></span> Failed</span><div class="t">No design passed</div><div class="n">honest</div></div>
+              </div>
+            </div>
+            <h3>Three outcomes, three looks, never confused</h3>
+            <p>An exhaustive truth-table check and a few measured numbers are different sizes of promise. The app refuses to let them look alike. Refusals and failures are their own thing too.</p>
+          </div>
+          <div class="panel" id="r3" style="padding-bottom:0">
+            <div class="frame">
+              <div class="readcard">
+                <div class="h">Step 1 &middot; check the reading</div>
+                <div class="l"><span>enable</span><span>active-high</span></div>
+                <div class="l"><span>outputs</span><span>Y0 .. Y3, one-hot</span></div>
+                <div class="l"><span>inputs</span><span>A1, A0</span></div>
+                <div class="ok"><span class="tick">&#10003;</span> Is this what your question meant?</div>
+              </div>
+            </div>
+            <h3>The simulator can't read your question. You can.</h3>
+            <p>A simulator proves the circuit matches the reading. It can't prove the reading matches the question: an enable read as active-low when the manual meant active-high passes every check. So the reading is printed first, every time.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="band rv">
+      <h2>Your next open-ended question,<br>answered with proof.</h2>
+      <p>One installer, a free key, a real simulator doing the checking.</p>
+      <div class="cta">
+        <a class="btn btn-dark" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">Download for Windows <span class="arrow">&#8599;</span></a>
+        <a class="btn btn-light" href="https://github.com/ShaanGS/ohmwork">Read the source</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <div class="mark"><img src="logo.png" alt=""> Ohmwork</div>
+        <p style="margin-top:12px;max-width:26em">Lab questions answered by a real simulator, on your own laptop. Built for the SRM ECE batch. MIT licensed.</p>
+      </div>
+      <div><h5>Product</h5><a href="#how">How it works</a><a href="library/">Solved library</a><a href="https://github.com/ShaanGS/ohmwork/releases/latest">Releases</a></div>
+      <div><h5>Project</h5><a href="https://github.com/ShaanGS/ohmwork">GitHub</a><a href="https://github.com/ShaanGS/ohmwork/blob/main/ARCHITECTURE.md">Architecture</a><a href="https://github.com/ShaanGS/ohmwork/issues">Report a wrong answer</a></div>
+    </div>
+    <div class="big" aria-hidden="true">Ohmwork</div>
+  </div>
+</footer>
+
+<script>
+  // Reveal on scroll.
+  var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }); }, { threshold: 0.12 });
+  document.querySelectorAll('.rv').forEach(function (el) { io.observe(el); });
+
+  // How-it-works: click a step or let it auto-advance every 5 s.
+  var steps = Array.prototype.slice.call(document.querySelectorAll('#steps .step'));
+  var wins = Array.prototype.slice.call(document.querySelectorAll('.stage .win'));
+  var cur = 0, timer;
+  function show(i) {
+    cur = i;
+    steps.forEach(function (s, j) { s.classList.toggle('on', j === i); if (j === i) { var b = s.querySelector('.bar i'); b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; } });
+    wins.forEach(function (w, j) { w.classList.toggle('on', j === i); });
+    if (i === 0) typeIt();
+    if (i === 2) { var l = document.getElementById('log2'); l.innerHTML = l.innerHTML; }
+    clearTimeout(timer); timer = setTimeout(function () { show((cur + 1) % steps.length); }, 5000);
+  }
+  steps.forEach(function (s, i) { s.addEventListener('click', function () { show(i); }); });
+  var typedText = 'Design a 2-to-4 decoder with an active-high enable, and give its truth table.';
+  var typedEl = document.getElementById('typed'), typeTimer;
+  function typeIt() { clearTimeout(typeTimer); typedEl.textContent = ''; var k = 0; (function tick() { if (k <= typedText.length) { typedEl.textContent = typedText.slice(0, k++); typeTimer = setTimeout(tick, 28); } })(); }
+  var howIO = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { show(0); howIO.disconnect(); } }, { threshold: 0.3 });
+  howIO.observe(document.querySelector('.how'));
+
+  // Probe grid: 128 cells with staggered delays.
+  var probe = document.querySelector('.probe');
+  for (var p = 0; p < 128; p++) { var c = document.createElement('i'); c.style.animationDelay = (p * 0.02) + 's'; probe.appendChild(c); }
+
+  // Sticky index highlights the panel in view.
+  var links = Array.prototype.slice.call(document.querySelectorAll('#index a'));
+  var pio = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id); }); } }); }, { rootMargin: '-40% 0px -50% 0px' });
+  document.querySelectorAll('.panel').forEach(function (pn) { pio.observe(pn); });
+</script>
 </body>
 </html>
