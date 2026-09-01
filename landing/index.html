@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Ohmwork</title>
+<meta name="description" content="A lab question in. A circuit file and an answer a real simulator checked, out.">
+<link rel="icon" type="image/png" href="logo.png">
+<style>
+  :root {
+    --bg: #101310;
+    --card: #181c17;
+    --border: rgba(255, 255, 255, 0.10);
+    --fg: #f6f8f4;
+    --muted: #9aa398;
+    --lime: #a4e819;
+    --lime-deep: #7bc20d;
+    --amber: #e8c04a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  header { padding: 28px 0; display: flex; align-items: center; justify-content: space-between; }
+  .mark { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -0.01em; }
+  .mark img { width: 34px; height: 34px; object-fit: contain; }
+  header nav a { color: var(--muted); text-decoration: none; font-size: 14px; margin-left: 20px; }
+  header nav a:hover { color: var(--fg); }
+
+  .hero { padding: 56px 0 40px; display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: center; }
+  .hero img { width: 220px; height: auto; filter: drop-shadow(0 0 44px rgba(164, 232, 25, 0.22)); }
+  h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.12; letter-spacing: -0.02em; font-weight: 700; }
+  h1 em { font-style: normal; color: var(--lime); }
+  .sub { margin-top: 16px; color: var(--muted); max-width: 34em; }
+
+  .cta { margin-top: 28px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; background: var(--lime); color: #16210a;
+    font-weight: 650; text-decoration: none; padding: 13px 26px;
+    border-radius: 12px; font-size: 16px;
+    box-shadow: 0 0 28px rgba(164, 232, 25, 0.25);
+  }
+  .btn:hover { background: var(--lime-deep); }
+  .cta small { color: var(--muted); font-size: 13px; }
+
+  .note {
+    margin-top: 18px; font-size: 13px; color: var(--muted);
+    border-left: 3px solid var(--amber); padding: 2px 0 2px 12px; max-width: 40em;
+  }
+  .note b { color: var(--amber); font-weight: 600; }
+
+  section { padding: 36px 0; border-top: 1px solid var(--border); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 600; margin-bottom: 20px; }
+  .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+  .card b { display: block; font-size: 15px; margin-bottom: 6px; }
+  .card p { font-size: 14px; color: var(--muted); }
+  .card .n { color: var(--lime); font-weight: 700; font-size: 13px; }
+
+  .honest p { color: var(--muted); font-size: 15px; max-width: 46em; }
+  .honest p + p { margin-top: 12px; }
+  .honest b { color: var(--fg); }
+
+  footer { padding: 32px 0 48px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 13px; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--fg); }
+  a { color: var(--lime); }
+
+  @media (max-width: 640px) {
+    .hero { grid-template-columns: 1fr; }
+    .hero img { width: 150px; order: -1; }
+    .cols { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="mark"><img src="logo.png" alt=""> ohmwork</span>
+    <nav>
+      <a href="library/">solved library</a>
+      <a href="https://github.com/ShaanGS/ohmwork">github</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <div>
+      <h1>Your lab question in.<br>A <em>simulator-checked</em> circuit out.</h1>
+      <p class="sub">
+        Type an electronics open-ended question in plain English. Ohmwork
+        designs the circuit, then makes a real simulator prove it &mdash;
+        Logisim&nbsp;Evolution for digital, LTspice for analog &mdash; and
+        hands you the circuit file plus the answer, with exactly what was
+        checked stated on every result.
+      </p>
+      <div class="cta">
+        <!-- releases/latest/download survives asset re-uploads; update the
+             filename when the version bumps. -->
+        <a class="btn" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.0.exe">
+          Download for Windows
+        </a>
+        <small>free &middot; ~240&nbsp;MB &middot; digital evaluator included</small>
+      </div>
+      <p class="note">
+        <b>Windows will warn</b> that the app is unrecognised &mdash; it is not
+        code-signed yet. Click <b>More&nbsp;info&nbsp;&rarr;&nbsp;Run&nbsp;anyway</b>.
+      </p>
+    </div>
+    <img src="logo.png" alt="The Ohmwork mascot">
+  </div>
+
+  <section>
+    <h2>Three steps</h2>
+    <div class="cols">
+      <div class="card"><span class="n">1</span><b>Install</b>
+        <p>Logisim Evolution is bundled inside &mdash; digital questions work
+           out of the box. For analog, install
+           <a href="https://www.analog.com/en/resources/design-tools-and-calculators/ltspice-simulator.html">LTspice</a>
+           (free); the app tells you if it is missing.</p></div>
+      <div class="card"><span class="n">2</span><b>Add a free model key</b>
+        <p>The first-run screen links to free signups (Groq, Google AI
+           Studio) and stores your key encrypted on your machine. It is never
+           uploaded by Ohmwork.</p></div>
+      <div class="card"><span class="n">3</span><b>Ask</b>
+        <p>Decoders, encoders, 7447 displays, regulators, rectifiers.
+           Download the <code>.circ</code> / <code>.asc</code> and open it in
+           the real tool.</p></div>
+    </div>
+  </section>
+
+  <section class="honest">
+    <h2>What makes it trustworthy</h2>
+    <p><b>The model never grades its own work.</b> Every digital answer is
+       evaluated row-by-row by Logisim Evolution running the actual emitted
+       file; every analog answer is simulated by LTspice and checked against
+       the question's own figures, operating regimes included. A design the
+       simulator disagrees with is thrown away and redone &mdash; nothing
+       reaches you unchecked.</p>
+    <p><b>It refuses instead of bluffing.</b> Questions outside its reach
+       &mdash; sequential logic, unmeasured parts, analog without LTspice
+       &mdash; are refused with the reason named, never answered with a
+       guess.</p>
+    <p><b>One check is yours.</b> Every answer starts with THE READING: how
+       your question was understood. The simulator proves the circuit matches
+       the reading; only you can confirm the reading matches your question.
+       That line is printed on every answer because it is true.</p>
+  </section>
+
+  <footer>
+    <span>MIT licensed &middot; built for the SRM ECE lab batch</span>
+    <span>
+      <a href="library/">solved questions</a> &middot;
+      <a href="https://github.com/ShaanGS/ohmwork/issues">report a wrong answer</a>
+    </span>
+  </footer>
+</div>
+</body>
+</html>

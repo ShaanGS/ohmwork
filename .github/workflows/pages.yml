@@ -21,6 +21,7 @@ on:
     branches: ["main"]
     paths:
       - "library/**"
+      - "landing/**"
       - "ohmwork/viewer.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -45,8 +46,14 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: pip install -e .
+      # The site is TWO things composed here, deliberately kept apart:
+      # the landing page (static marketing, owns the root) and the library
+      # viewer (auditable record, adds no facts, untouched — it serves from
+      # /library/ because every link it renders is relative).
       - name: Render the library
-        run: python -m ohmwork --library library --build-site site
+        run: python -m ohmwork --library library --build-site site/library
+      - name: Place the landing page at the root
+        run: cp landing/* site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
