@@ -810,3 +810,37 @@ def test_a_checked_figure_the_question_never_states_is_FLAGGED_in_the_reading():
     assert data["shift"]["figure_stated"] is False
     assert data["vin_pp"]["figure_stated"] is True
     assert data["obs"]["figure_stated"] is None
+
+
+# ------------------------------------------ clamper polarity (2026-09-02)
+
+def test_a_positive_clamper_must_state_the_sign_of_its_dc_level():
+    """MEASURED: a 'positive clamper' question MET THE INTENT with an output
+    swinging -7.6 V to +0.7 V -- a negative clamper -- because the output
+    carried only an observation. The word states the sign; require it."""
+    import json
+    intent = json.loads(REGULATOR)
+    intent["topology"] = "positive clamper circuit"
+    intent["frequency"] = 1000
+    intent["stated_values"] = [{"what": "input", "value": "10", "unit": "Vpp"}]
+    intent["targets"] = [
+        {"name": "vin_pp", "kind": "ripple_pp", "quantity": "input voltage",
+         "unit": "V", "net": "vin", "value": 10, "tolerance_pct": 5},
+        {"name": "shift", "kind": "dc_level", "quantity": "DC level shift",
+         "unit": "V", "net": "vout"},
+    ]
+    with pytest.raises(IntentError, match='"min": 0'):
+        parse_intent_reply(json.dumps(intent))
+    intent["targets"][1]["min"] = 0
+    parsed = parse_intent_reply(json.dumps(intent))
+    shift = next(t for t in parsed.targets if t.name == "shift")
+    assert shift.minimum == 0 and not shift.is_observation
+    # zero is a sign, not an invented figure: no flag in the reading
+    assert "NOT among" not in parsed.render()
+
+    intent["topology"] = "negative clamper"
+    intent["targets"][1] = {"name": "shift", "kind": "dc_level",
+                            "quantity": "DC level shift", "unit": "V",
+                            "net": "vout"}
+    with pytest.raises(IntentError, match='"max": 0'):
+        parse_intent_reply(json.dumps(intent))

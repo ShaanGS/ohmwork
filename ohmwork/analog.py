@@ -147,6 +147,10 @@ RULES:
    a clamped waveform is "dc_level" ((max+min)/2); a "clipping level" or
    "peak" is "peak_max"/"peak_min"; "ripple factor" is "ripple_factor";
    "ripple" in volts is "ripple_pp"; an average is "ac_mean".
+   THE WORD STATES THE SIGN. A POSITIVE clamper shifts the output UP: its
+   dc_level target carries "min": 0. A NEGATIVE clamper carries "max": 0. A
+   positive clipper's output carries "max" at the clipping level. A clamper
+   of the wrong polarity passes every other check, so this one is required.
 
 4. "frequency" is the source frequency in Hz, and is REQUIRED if any target
    is one of {transient}. The simulation window is derived from it. Use null

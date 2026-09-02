@@ -557,10 +557,43 @@ def parse_intent_reply(text) -> Intent:
 
     if frequency:
         _check_stated_amplitudes(targets, stated)
+    _check_clamper_polarity(topology, targets)
 
     return Intent(topology=topology.strip(), targets=targets,
                   stated_values=stated, frequency=frequency,
                   notes=tuple(data.get("notes") or ()))
+
+
+def _check_clamper_polarity(topology: str, targets) -> None:
+    """A POSITIVE clamper shifts the waveform up; a negative one down. The
+    word states the sign, so the sign is checkable -- and it was not being
+    checked. MEASURED 2026-09-02: a "positive clamper" question MET THE
+    INTENT in one attempt with an output swinging -7.6 V to +0.7 V, a
+    negative clamper, because the only thing on the output was an
+    observation. A dc_level target on a clamper output must carry the sign
+    as a bound: "min": 0 for positive, "max": 0 for negative. Zero is not a
+    figure the question has to state; it is what the word means.
+    """
+    words = (topology or "").lower()
+    if "positive clamp" in words and "negative clamp" in words:
+        return                      # both polarities named: nothing to infer
+    if "positive clamp" in words:
+        wanted, field, label = "minimum", "min", "positive"
+    elif "negative clamp" in words:
+        wanted, field, label = "maximum", "max", "negative"
+    else:
+        return
+    for target in targets:
+        if target.kind != "dc_level":
+            continue
+        if getattr(target, wanted) == 0 or target.value is not None:
+            continue
+        raise IntentError(
+            f"{target.name} ({target.quantity}): the topology is a {label} "
+            f"clamper, which shifts the output {'up' if label == 'positive' else 'down'}, "
+            f"so its DC level has a SIGN the question states. Give this "
+            f"dc_level target \"{field}\": 0 so a clamper of the wrong "
+            f"polarity fails instead of being reported as an observation.")
 
 
 def figure_is_stated(target, stated) -> bool | None:
@@ -581,7 +614,9 @@ def figure_is_stated(target, stated) -> bool | None:
         return None
     numbers = [n for n in (_stated_number(item) for item in stated)
                if n is not None]
-    return all(any(abs(f - n) <= 0.02 * max(abs(n), 1e-12) for n in numbers)
+    # Zero is a sign, not a figure: "positive clamper" states it.
+    return all(f == 0 or any(abs(f - n) <= 0.02 * max(abs(n), 1e-12)
+                             for n in numbers)
                for f in figures)
 
 
