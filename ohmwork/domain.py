@@ -295,7 +295,8 @@ DIGITAL_SIMULATORS = ("logisim",)
 #: The list shrinks only when a real `.asc` containing the part arrives.
 UNMEASURED_ANALOG = (
     "op-amp", "opamp", "op amp", "operational amplifier", "741", "555",
-    "mosfet", "jfet", "igbt", "thyristor", "scr", "triac", "diac", "ujt",
+    "mosfet", "jfet", "fet", "field effect transistor", "field-effect",
+    "igbt", "thyristor", "scr", "triac", "diac", "ujt",
     "optocoupler", "opto-coupler", "photodiode", "phototransistor",
     "transformer", "relay", "crystal oscillator", "voltage regulator ic",
     "7805", "7812", "lm317", "ic 7805", "ne555",

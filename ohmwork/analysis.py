@@ -44,7 +44,16 @@ RUN_TYPES = ANALOG_RUN_TYPES | DIGITAL_RUN_TYPES
 #: structurally wrong. zener_in_breakdown/bjt_active are meaningless for a
 #: gate network, and these three are meaningless for a SPICE circuit, so each
 #: family names the devices or the run it applies to.
-ANALOG_REGIMES = {"zener_in_breakdown", "bjt_active"}
+ANALOG_REGIMES = {"zener_in_breakdown", "bjt_active", "diode_conducts"}
+
+#: A plain diode in a wave-shaping circuit must do its job over the window:
+#: conduct on part of the cycle and block on part of it. MEASURED 2026-09-02
+#: on the Exp 4.7 clamper -- "0 regime checks held", because no regime
+#: existed for a diode, so a clamper whose diode never switched would have
+#: passed every check. Forward current above this counts as conducting.
+DIODE_ON_CURRENT = 1e-4
+#: ...and it must be in each state for at least this fraction of the points.
+DIODE_MIN_FRACTION = 0.01
 DIGITAL_REGIMES = {"no_floating_inputs", "all_outputs_driven",
                    "no_combinational_loops"}
 REGIME_ASSERTS = ANALOG_REGIMES | DIGITAL_REGIMES
@@ -335,6 +344,7 @@ def _check_regime_entry(circuit, m, runs):
     wanted = {
         "zener_in_breakdown": {"zener", "diode"},
         "bjt_active": {"npn", "pnp"},
+        "diode_conducts": {"diode"},
     }[m["assert"]]
     if device["type"] not in wanted:
         raise AnalysisError(
@@ -714,6 +724,11 @@ def _examined_analog(entry, run, results) -> str:
                 f"reverse current")
         if "vz" in entry:
             what += f", and its terminal voltage against Vz={entry['vz']} V"
+    elif entry["assert"] == "diode_conducts":
+        what = (f"I({entry['device']}) for a forward current above "
+                f"{DIODE_ON_CURRENT:g} A on at least "
+                f"{DIODE_MIN_FRACTION:.0%} of the window, and below it on at "
+                f"least {DIODE_MIN_FRACTION:.0%}")
     else:
         what = (f"Vce of {entry['device']} against "
                 f"{entry.get('vce_sat', 0.2)} V, and Ib for cut-off")
@@ -773,6 +788,34 @@ def _check_regime(circuit, entry, run, results) -> list[str]:
                     f"{dev} terminal voltage more than 20% from "
                     f"Vz={vz} V at {off} of {n} sweep points"
                 )
+
+    elif entry["assert"] == "diode_conducts":
+        # Netlist convention D anode cathode: forward current is positive.
+        current = _wave(results, f"I({dev})", run["id"], n)
+        on = sum(1 for i in current if i > DIODE_ON_CURRENT)
+        need = max(1, int(DIODE_MIN_FRACTION * n))
+        if on < need:
+            # Fed back to a design loop, so it carries the diagnosis: a diode
+            # that never conducts is either backwards or never sees enough
+            # forward voltage.
+            va = _net_wave(results, nets["anode"], run["id"], n)
+            vk = _net_wave(results, nets["cathode"], run["id"], n)
+            peak_fwd = max(a - k for a, k in zip(va, vk))
+            reasons.append(
+                f"{dev} never conducts: forward current above "
+                f"{DIODE_ON_CURRENT:g} A at only {on} of {n} points. Its "
+                f"anode peaks {peak_fwd:.3g} V above its cathode over the "
+                f"window"
+                + (" -- it is oriented backwards for this signal; swap "
+                   "anode and cathode" if peak_fwd < 0.3 else
+                   " -- it is starved: reduce the resistance in series "
+                   "with it or drive it from a larger swing"))
+        if n - on < need:
+            reasons.append(
+                f"{dev} never blocks: forward current stays above "
+                f"{DIODE_ON_CURRENT:g} A at {on} of {n} points, so it is "
+                f"acting as a wire, not a diode -- check what is holding "
+                f"it on")
 
     elif entry["assert"] == "bjt_active":
         vce_sat = entry.get("vce_sat", 0.2)

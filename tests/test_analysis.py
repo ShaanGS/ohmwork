@@ -782,3 +782,68 @@ def test_waveform_stats_publish_the_midpoint_and_the_ripple_factor():
     assert flat["dc_level"] == 3.0
     ac = _waveform_stats(t, [math.sin(2 * math.pi * 5 * x) for x in t])
     assert ac["ripple_factor"] is None
+
+
+# ------------------------------------------------ diode_conducts (2026-09-02)
+#
+# The Exp 4.7 clamper run reported "0 regime checks held": no regime existed
+# for a plain diode, so a clamper whose diode never switched -- backwards, or
+# starved -- passed every check. A wave-shaping diode must conduct on part
+# of the window and block on part of it.
+
+class _Results:
+    def __init__(self, traces):
+        self.traces = traces
+
+
+def _diode_circuit():
+    return {"components": [{"ref": "D1", "type": "diode", "part": "1N4007"}],
+            "nets": {"vin": ["D1.anode"], "vout": ["D1.cathode"]}}
+
+
+def _check(traces):
+    run = {"id": "waveforms", "type": "tran", "stop": 0.01, "settle": 0.005}
+    entry = {"kind": "regime", "run": "waveforms", "assert": "diode_conducts",
+             "device": "D1"}
+    return analysis._check_regime(_diode_circuit(), entry, run, _Results(traces))
+
+
+def test_a_diode_that_switches_holds_the_regime():
+    n = 200
+    t = [i * 1e-5 for i in range(n)]
+    on = [0.01 if i % 2 else 0.0 for i in range(n)]      # conducts half the time
+    assert _check({"time": t, "I(D1)": on, "V(vin)": [1.0] * n,
+                   "V(vout)": [0.3] * n}) == []
+
+
+def test_a_diode_that_never_conducts_is_diagnosed_as_backwards_or_starved():
+    n = 200
+    t = [i * 1e-5 for i in range(n)]
+    never = [0.0] * n
+    # anode below cathode: backwards
+    backwards = _check({"time": t, "I(D1)": never, "V(vin)": [0.0] * n,
+                        "V(vout)": [5.0] * n})
+    assert backwards and "never conducts" in backwards[0]
+    assert "backwards" in backwards[0]
+    # anode above cathode by plenty, still no current: starved
+    starved = _check({"time": t, "I(D1)": never, "V(vin)": [5.0] * n,
+                      "V(vout)": [0.0] * n})
+    assert starved and "starved" in starved[0]
+
+
+def test_a_diode_that_never_blocks_is_a_wire():
+    n = 200
+    t = [i * 1e-5 for i in range(n)]
+    always = [0.02] * n
+    reasons = _check({"time": t, "I(D1)": always, "V(vin)": [1.0] * n,
+                      "V(vout)": [0.3] * n})
+    assert reasons and "never blocks" in reasons[0]
+
+
+def test_the_diode_regime_is_derived_for_transient_runs_only():
+    from ohmwork.intent import _regime_entries
+    circuit = _diode_circuit()
+    runs = [{"id": "op", "type": "op"},
+            {"id": "waveforms", "type": "tran", "stop": 0.01, "settle": 0.005}]
+    entries = _regime_entries(circuit, runs)
+    assert [(e["assert"], e["run"]) for e in entries] == [("diode_conducts", "waveforms")]

@@ -572,7 +572,7 @@ def _resolve_role(role: str, circuit: dict) -> str:
     return matching[0]
 
 
-def _regime_entries(circuit: dict, run_ids) -> list:
+def _regime_entries(circuit: dict, runs) -> list:
     """Regimes, DERIVED from the parts list rather than requested.
 
     Convergence is not correctness: a load sweep into dropout converges
@@ -580,10 +580,20 @@ def _regime_entries(circuit: dict, run_ids) -> list:
     asked to declare these can omit exactly the one that would have failed, so
     it is not asked.
     """
+    run_ids = [run["id"] if isinstance(run, dict) else run for run in runs]
+    tran_ids = [run["id"] for run in runs
+                if isinstance(run, dict) and run.get("type") == "tran"]
     entries = []
     for component in circuit.get("components") or []:
         kind = component.get("type")
-        if kind == "zener":
+        if kind == "diode":
+            # Only over a settled transient window: on a DC operating point a
+            # rectifier's or clamper's diode has one state, and demanding
+            # both there would fail a correct circuit.
+            entries += [{"kind": "regime", "run": run,
+                         "assert": "diode_conducts",
+                         "device": component["ref"]} for run in tran_ids]
+        elif kind == "zener":
             for run in run_ids:
                 entry = {"kind": "regime", "run": run,
                          "assert": "zener_in_breakdown",
@@ -687,7 +697,7 @@ def build_analog_plan(intent: Intent, circuit: dict) -> dict:
             measurements.append({"name": target.name, "kind": "waveform_stats",
                                  "run": TRAN_RUN, "expr": target.expr})
 
-    measurements += _regime_entries(circuit, [run["id"] for run in runs])
+    measurements += _regime_entries(circuit, runs)
     return {"runs": runs, "measurements": measurements}
 
 
