@@ -456,6 +456,28 @@ def parse_intent_reply(text) -> Intent:
             raise IntentError(f"duplicate target name {target.name!r}")
         seen[target.name] = target
 
+    # Two targets that are the SAME measurement under two names. MEASURED
+    # 2026-09-02 on the Exp 4.7 clamper, a two-part question: the intent
+    # named part (i)'s output and part (ii)'s output both "vout", one circuit
+    # was designed, and the report showed two quantities with identical
+    # numbers -- half the question answered, nothing to catch it, because an
+    # observation carries no figure to fail. The measurement is the same
+    # expression on the same run, so identical numbers are not a coincidence
+    # to notice afterwards; they are guaranteed, and refusable up front.
+    where = {}
+    for target in targets:
+        key = (target.kind, target.net, target.net2, target.role)
+        other = where.setdefault(key, target)
+        if other is not target:
+            raise IntentError(
+                f"{other.name} and {target.name} are the same measurement "
+                f"({target.kind} on {target.where()}) under two names, so "
+                f"they would always report the same number. If the question "
+                f"has two parts -- (i) and (ii), an unbiased and a biased "
+                f"circuit -- each part is its OWN circuit with its OWN nodes: "
+                f"name them differently (vout_a and vout_b, vout1 and vout2) "
+                f"so each is designed and measured separately.")
+
     for kind in ("line_regulation", "load_regulation"):
         many = [t.name for t in targets if t.kind == kind]
         if len(many) > 1:

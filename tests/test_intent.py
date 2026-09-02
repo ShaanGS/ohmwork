@@ -621,3 +621,31 @@ def test_a_dc_level_target_is_checked_against_the_midpoint_not_the_mean():
     assert _measured_value(t, M()) == 4.3
     assert _measured_value(Target(name="p", kind="peak_max", quantity="peak",
                                   unit="V", net="vout"), M()) == 9.3
+
+
+def test_two_targets_on_one_node_are_one_measurement_and_are_refused():
+    """MEASURED 2026-09-02 on the Exp 4.7 clamper (a two-part question): the
+    intent named both parts' outputs `vout`, one circuit was designed, and
+    two quantities reported identical numbers. Same kind, same node, same
+    run is the same expression, so the duplication is refusable up front
+    -- and the message says how to name the nodes so both parts exist."""
+    import json
+    intent = json.loads(REGULATOR)
+    intent["frequency"] = 1000
+    intent["targets"] = [
+        {"name": "shift_a", "kind": "dc_level", "quantity": "DC level shift",
+         "unit": "V", "net": "vout"},
+        {"name": "shift_b", "kind": "dc_level", "quantity": "biased DC level",
+         "unit": "V", "net": "vout"},
+    ]
+    with pytest.raises(IntentError) as caught:
+        parse_intent_reply(json.dumps(intent))
+    message = str(caught.value)
+    assert "shift_a" in message and "shift_b" in message
+    assert "same measurement" in message
+    assert "vout_a" in message                       # says what to do instead
+
+    # Different nodes: two circuits, two measurements, accepted.
+    intent["targets"][1]["net"] = "vout_b"
+    parsed = parse_intent_reply(json.dumps(intent))
+    assert {t.net for t in parsed.targets} == {"vout", "vout_b"}

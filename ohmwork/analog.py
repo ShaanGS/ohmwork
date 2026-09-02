@@ -123,6 +123,14 @@ RULES:
    waveform" is {{"kind": "current_waveform", "role": "load"}} -- NOT a
    "waveform" target on the load's node, which would measure a voltage and
    report it under a name that says current.
+   A question in PARTS -- "(i) ... (ii) ...", an unbiased and a biased
+   clamper -- describes SEPARATE circuits. Give each part its own nodes
+   (vin_a/vout_a and vin_b/vout_b) so each is designed and measured; two
+   targets on one node are one measurement, and are refused.
+   Pick the kind by what the words MEAN: "DC level shift" or "DC level" of
+   a clamped waveform is "dc_level" ((max+min)/2); a "clipping level" or
+   "peak" is "peak_max"/"peak_min"; "ripple factor" is "ripple_factor";
+   "ripple" in volts is "ripple_pp"; an average is "ac_mean".
 
 4. "frequency" is the source frequency in Hz, and is REQUIRED if any target
    is one of {transient}. The simulation window is derived from it. Use null

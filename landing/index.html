@@ -112,10 +112,11 @@
   .demo .bar .q .ph { color: var(--ink-3); }
   .demo .bar .q .ph[hidden] { display: none; }
   .demo .bar .q .qwrap { position: relative; display: inline-block; white-space: pre; }
+  .demo .bar .q { scroll-behavior: auto; }
   .demo .bar .q .qwrap:empty { display: none; }
-  .demo .bar .q #qtext span { opacity: 0; transition: opacity .16s ease-out; }
+  .demo .bar .q #qtext span { opacity: 0; }
   .demo .bar .q #qtext span.on { opacity: 1; }
-  .demo .bar .q .caret { position: absolute; top: 2px; width: 1.5px; height: 16px; background: var(--ink); border-radius: 1px; opacity: 0; transition: left .06s linear, opacity .2s; }
+  .demo .bar .q .caret { position: absolute; top: 2px; left: 0; width: 1.5px; height: 16px; background: var(--ink); border-radius: 1px; opacity: 0; transition: transform .05s linear, opacity .2s; will-change: transform; }
   .demo .bar .q .caret.on { opacity: 1; animation: blink 1s steps(2) .6s infinite; }
   @keyframes blink { 50% { opacity: 0; } }
   .demo .send { width: 34px; height: 34px; border-radius: 50%; border: 0; background: #e9ebe4; color: var(--ink-3); display: grid; place-items: center; cursor: pointer; transition: background .3s, color .3s, transform .2s; }
@@ -633,7 +634,15 @@
   steps.forEach(function (s, i) { s.addEventListener('click', function () { show(i); }); });
   var typedText = 'Design a 2-to-4 decoder with an active-high enable, and give its truth table.';
   var typedEl = document.getElementById('typed'), typeTimer;
-  function typeIt() { clearTimeout(typeTimer); typedEl.textContent = ''; var k = 0; (function tick() { if (k <= typedText.length) { typedEl.textContent = typedText.slice(0, k++); typeTimer = setTimeout(tick, 28); } })(); }
+  function typeIt() {
+    cancelAnimationFrame(typeTimer); typedEl.textContent = ''; var start = null;
+    (function tick(now) {
+      if (start === null) start = now;
+      var k = Math.min(typedText.length, Math.floor((now - start) / 30) + 1);
+      typedEl.textContent = typedText.slice(0, k);
+      if (k < typedText.length) typeTimer = requestAnimationFrame(tick);
+    })(performance.now());
+  }
   var howIO = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { show(0); howIO.disconnect(); } }, { threshold: 0.3 });
   howIO.observe(document.querySelector('.how'));
 
@@ -668,7 +677,7 @@
     function wait(ms) { return new Promise(function (r) { setTimeout(r, reduced ? 0 : ms); }); }
     function setTag(el, text, cls) { el.textContent = text; el.className = 'tag' + (cls ? ' ' + cls : ''); }
     function reset() {
-      qtext.innerHTML = ''; qph.hidden = false; qbox.classList.remove('focus'); send.className = 'send'; document.getElementById('caret').classList.remove('on');
+      qtext.innerHTML = ''; qph.hidden = false; qbox.classList.remove('focus'); qtext.parentNode.style.transform = ''; send.className = 'send'; document.getElementById('caret').classList.remove('on');
       think.hidden = false; think.classList.add('idle'); thinktext.textContent = 'waiting for a question';
       log.innerHTML = ''; setTag(looptag, 'idle'); setTag(tabletag, 'not yet');
       skel.hidden = false; tt.hidden = true; verified.hidden = true;
@@ -681,14 +690,24 @@
       var caret = document.getElementById('caret');
       qtext.innerHTML = ''; var chars = [];
       for (var c = 0; c < question.length; c++) { var sp = document.createElement('span'); sp.textContent = question[c]; qtext.appendChild(sp); chars.push(sp); }
-      caret.style.left = '0px'; caret.classList.add('on');
+      caret.style.transform = 'translateX(0)'; caret.classList.add('on');
       await wait(250); if (me !== run) return;
       await new Promise(function (done) {
-        var i = 0, last = 0, per = reduced ? 0 : 26;
+        var shown = 0, per = reduced ? 0 : 34, start = null;
         function frame(now) {
           if (me !== run) return done();
-          if (now - last >= per) { last = now; chars[i].classList.add('on'); caret.style.left = (chars[i].offsetLeft + chars[i].offsetWidth) + 'px'; i++; }
-          if (i < chars.length) requestAnimationFrame(frame); else done();
+          if (start === null) start = now;
+          var target = per ? Math.min(chars.length, Math.floor((now - start) / per) + 1) : chars.length;
+          if (target > shown) {
+            for (; shown < target; shown++) chars[shown].style.opacity = '1';
+            var c = chars[shown - 1];
+            caret.style.transform = 'translateX(' + (c.offsetLeft + c.offsetWidth) + 'px)';
+            // Keep the caret in view on a phone: slide the text left by however
+            // much it overflows the box (a transform, so it stays on the compositor).
+            var over = qtext.parentNode.offsetWidth - (qbox.clientWidth - 44);
+            qtext.parentNode.style.transform = over > 0 ? 'translateX(' + (-over) + 'px)' : '';
+          }
+          if (shown < chars.length) requestAnimationFrame(frame); else done();
         }
         requestAnimationFrame(frame);
       });
