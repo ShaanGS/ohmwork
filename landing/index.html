@@ -659,6 +659,8 @@
   // resolve log lines one at a time, fill the table, stamp it.
   (function () {
     var qtext = document.getElementById('qtext'), qph = document.getElementById('qph'), qbox = qtext.parentNode;
+    // The pill itself, for measuring overflow: qbox is the text span INSIDE it.
+    var qfield = qbox.closest('.q');
     var send = document.getElementById('send'), think = document.getElementById('think'), thinktext = document.getElementById('thinktext');
     var log = document.getElementById('log'), looptag = document.getElementById('looptag'), tabletag = document.getElementById('tabletag');
     var skel = document.getElementById('skel'), tt = document.getElementById('tt'), verified = document.getElementById('verified');
@@ -704,7 +706,7 @@
             caret.style.transform = 'translateX(' + (c.offsetLeft + c.offsetWidth) + 'px)';
             // Keep the caret in view on a phone: slide the text left by however
             // much it overflows the box (a transform, so it stays on the compositor).
-            var over = qtext.parentNode.offsetWidth - (qbox.clientWidth - 44);
+            var over = qtext.parentNode.offsetWidth - (qfield.clientWidth - 44);
             qtext.parentNode.style.transform = over > 0 ? 'translateX(' + (-over) + 'px)' : '';
           }
           if (shown < chars.length) requestAnimationFrame(frame); else done();
