@@ -649,3 +649,63 @@ def test_two_targets_on_one_node_are_one_measurement_and_are_refused():
     intent["targets"][1]["net"] = "vout_b"
     parsed = parse_intent_reply(json.dumps(intent))
     assert {t.net for t in parsed.targets} == {"vout", "vout_b"}
+
+
+# ------------------------------------------ current through a named part
+#
+# Thevenin, superposition and KCL labs ask for "the current through R3".
+# Until 2026-09-02 a current could only name a ROLE (supply, load, zener,
+# transistor, diode), so those questions could report node voltages only.
+
+def _dc(targets):
+    import json
+    intent = json.loads(REGULATOR)
+    intent["frequency"] = None
+    intent["targets"] = targets
+    return intent
+
+
+def test_a_current_target_may_name_the_questions_own_component():
+    import json
+    from ohmwork.intent import build_analog_plan
+    intent = parse_intent_reply(json.dumps(_dc([
+        {"name": "i_r3", "kind": "dc_current", "quantity": "current through R3",
+         "unit": "A", "ref": "R3", "value": 0.002, "tolerance_pct": 5}])))
+    target = intent.targets[0]
+    assert target.ref == "R3" and target.role is None
+    assert target.where() == "the current through R3"
+    assert "the current through R3" in intent.render()
+    assert intent.reading_data()["targets"][0]["ref"] == "R3"
+
+    circuit = {"components": [{"ref": "V1", "type": "voltage", "value": "12"},
+                              {"ref": "R3", "type": "res", "value": "6k"},
+                              {"ref": "RL", "type": "res", "value": "1k"}],
+               "nets": {"vin": ["V1.+", "R3.a"], "vout": ["R3.b", "RL.a"],
+                        "0": ["V1.-", "RL.b"]}}
+    plan = build_analog_plan(intent, circuit)
+    exprs = [m.get("expr") for m in plan["measurements"] if m.get("name") == "i_r3"]
+    assert exprs == ["I(R3)"]
+
+
+def test_a_design_without_the_named_component_is_told_to_name_it():
+    import json
+    from ohmwork.intent import build_analog_plan
+    intent = parse_intent_reply(json.dumps(_dc([
+        {"name": "i_r3", "kind": "dc_current", "quantity": "current through R3",
+         "unit": "A", "ref": "R3"}])))
+    circuit = {"components": [{"ref": "V1", "type": "voltage", "value": "12"},
+                              {"ref": "R1", "type": "res", "value": "6k"},
+                              {"ref": "RL", "type": "res", "value": "1k"}],
+               "nets": {"vin": ["V1.+", "R1.a"], "vout": ["R1.b", "RL.a"],
+                        "0": ["V1.-", "RL.b"]}}
+    with pytest.raises(IntentError, match="no component named R3"):
+        build_analog_plan(intent, circuit)
+
+
+def test_a_current_target_needs_exactly_one_of_role_and_ref():
+    import json
+    for extra in ({}, {"role": "load", "ref": "R3"}):
+        with pytest.raises(IntentError, match="exactly one"):
+            parse_intent_reply(json.dumps(_dc([
+                {"name": "i", "kind": "dc_current", "quantity": "current",
+                 "unit": "A", **extra}])))

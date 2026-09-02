@@ -132,7 +132,10 @@ RULES:
    A CURRENT target names a "role" instead, never a net. "The load current
    waveform" is {{"kind": "current_waveform", "role": "load"}} -- NOT a
    "waveform" target on the load's node, which would measure a voltage and
-   report it under a name that says current.
+   report it under a name that says current. When the question names the
+   component ITSELF -- "the current through R3", "I in R2" -- give "ref"
+   (exactly the question's name, e.g. "R3") instead of "role"; the design
+   will be required to contain a component with that name.
    A question in PARTS -- "(i) ... (ii) ...", an unbiased and a biased
    clamper -- describes SEPARATE circuits. Give each part its own nodes
    (vin_a/vout_a and vin_b/vout_b) so each is designed and measured; two
@@ -180,7 +183,9 @@ RULES:
 2. RESERVED NAMES, and they are not optional. The source the question calls
    the supply or the input MUST be named V1. The load MUST be named RL. A
    resistor looks like every other resistor, so nothing downstream can tell
-   which one is the load unless it is named.
+   which one is the load unless it is named. Any component the intent
+   measures BY NAME ("the current through R3") must exist with EXACTLY that
+   ref.
 
 3. NETS. A net is a NODE: every pin that touches one junction, listed once
    under one name, written "REF.pin". Never write two nets for one junction

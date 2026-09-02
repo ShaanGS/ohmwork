@@ -64,7 +64,10 @@ MAX_TOLERANCE_PCT = 20.0
 #: run and a measurement the analysis layer already knows how to execute.
 TARGET_KINDS = {
     "dc_voltage": ("net",),
-    "dc_current": ("role",),
+    # A current names a "role" (supply, load, zener, ...) OR, when the
+    # question itself names the part -- "the current through R3" -- a "ref".
+    # `_parse_target` enforces exactly one of the two.
+    "dc_current": (),
     "line_regulation": ("net", "low", "high"),
     "load_regulation": ("net", "light", "heavy"),
     "ripple_pp": ("net",),
@@ -76,7 +79,7 @@ TARGET_KINDS = {
     # back as a `waveform` target on the load's node -- a voltage, reported
     # under a name that says current, with nothing to catch it because an
     # observation has no number to fail against.
-    "current_waveform": ("role",),
+    "current_waveform": (),
     # Added 2026-09-02 from the first two questions of the acceptance corpus.
     # `_waveform_stats` had computed min and max since Q3 and thrown them
     # away, so a clipper's "clipping level", a clamper's "DC level shift" and
@@ -88,6 +91,9 @@ TARGET_KINDS = {
     "dc_level": ("net",),        # (max + min) / 2: where a clamper puts it
     "ripple_factor": ("net",),   # rms of the AC part over the mean, unitless
 }
+
+#: Kinds that measure a current, and so name a role or a ref.
+CURRENT_KINDS = {"dc_current", "current_waveform"}
 
 #: Kinds that need a transient run, and therefore a source frequency.
 TRANSIENT_KINDS = {"ripple_pp", "ac_rms", "ac_mean", "waveform",
@@ -185,6 +191,12 @@ class Target:
     net: str | None = None
     net2: str | None = None      # for a difference, e.g. a floating source
     role: str | None = None
+    #: The question's OWN name for a component whose current it asks for
+    #: ("the current through R3"). Unlike a role it is the question's word,
+    #: not a design artefact, so the design is required to use it. Added
+    #: 2026-09-02: Thevenin, superposition and KCL labs ask for branch
+    #: currents and could only report node voltages.
+    ref: str | None = None
     low: float | None = None
     high: float | None = None
     light: object = None
@@ -215,6 +227,8 @@ class Target:
             what = "current" if self.kind in ("dc_current",
                                               "current_waveform") else "value"
             return f"the {self.role}'s {what}"
+        if self.ref:
+            return f"the current through {self.ref}"
         where = (f"V({self.net}) - V({self.net2})" if self.net2
                  else f"V({self.net})")
         if self.kind == "line_regulation":
@@ -268,7 +282,7 @@ class Intent:
             "topology": self.topology,
             "frequency": self.frequency,
             "targets": [{"name": t.name, "quantity": t.quantity,
-                         "unit": t.unit, "where": t.where(),
+                         "unit": t.unit, "where": t.where(), "ref": t.ref,
                          "wanted": t.wanted(),
                          "checked": not t.is_observation}
                         for t in self.targets],
@@ -361,6 +375,19 @@ def _parse_target(data, index) -> Target:
         raise IntentError(
             f"{where}: unknown role {role!r}. Known roles: "
             f"{', '.join(sorted(ROLES))}")
+    ref = data.get("ref")
+    if ref is not None and not (isinstance(ref, str) and NET.match(ref)):
+        raise IntentError(
+            f"{where}: ref {ref!r} is not usable as a component name. It "
+            f"must match {NET.pattern} and be the name the question uses.")
+    if kind in CURRENT_KINDS:
+        if (role is None) == (ref is None):
+            raise IntentError(
+                f"{where}: a {kind} target names WHERE the current flows: "
+                f"exactly one of \"role\" (one of "
+                f"{', '.join(sorted(ROLES))}) or \"ref\" (the question's own "
+                f"name for the component, e.g. R3). It has "
+                f"{'both' if role else 'neither'}.")
 
     bounds = [key for key in ("value", "maximum", "max", "minimum", "min")
               if data.get(key) is not None]
@@ -404,6 +431,7 @@ def _parse_target(data, index) -> Target:
     maximum = data.get("maximum", data.get("max"))
     minimum = data.get("minimum", data.get("min"))
     return Target(
+        ref=ref,
         name=name, kind=kind, quantity=quantity.strip(),
         unit=str(data.get("unit") or UNIT_OF[kind]),
         value=value, tolerance_pct=tolerance,
@@ -466,7 +494,7 @@ def parse_intent_reply(text) -> Intent:
     # to notice afterwards; they are guaranteed, and refusable up front.
     where = {}
     for target in targets:
-        key = (target.kind, target.net, target.net2, target.role)
+        key = (target.kind, target.net, target.net2, target.role, target.ref)
         other = where.setdefault(key, target)
         if other is not target:
             raise IntentError(
@@ -547,6 +575,19 @@ def spice_number(value: float) -> str:
 
 
 # ---------------------------------------------------------- the plan
+
+def _resolve_current(target, circuit: dict) -> str:
+    """The ref whose current a target measures: by role, or by the question's
+    own name for the part, which the design is then required to contain."""
+    if target.ref:
+        if any(c.get("ref") == target.ref for c in circuit.get("components") or []):
+            return target.ref
+        raise IntentError(
+            f"the intent measures the current through {target.ref}, which is "
+            f"the question's own name for that component, and this design "
+            f"has no component named {target.ref}. Name it {target.ref}.")
+    return _resolve_role(target.role, circuit)
+
 
 def _resolve_role(role: str, circuit: dict) -> str:
     """A role -> the ref in this design that fills it."""
@@ -659,7 +700,7 @@ def build_analog_plan(intent: Intent, circuit: dict) -> dict:
             measurements.append({"name": target.name, "run": OP_RUN,
                                  "expr": target.expr})
         elif target.kind == "dc_current":
-            ref = _resolve_role(target.role, circuit)
+            ref = _resolve_current(target, circuit)
             measurements.append({"name": target.name, "run": OP_RUN,
                                  "expr": f"I({ref})"})
         elif target.kind == "line_regulation":
@@ -690,7 +731,7 @@ def build_analog_plan(intent: Intent, circuit: dict) -> dict:
                                 f"normalised to the heavier load")},
             ]
         elif target.kind == "current_waveform":
-            ref = _resolve_role(target.role, circuit)
+            ref = _resolve_current(target, circuit)
             measurements.append({"name": target.name, "kind": "waveform_stats",
                                  "run": TRAN_RUN, "expr": f"I({ref})"})
         else:
