@@ -77,11 +77,22 @@ TARGET_KINDS = {
     # under a name that says current, with nothing to catch it because an
     # observation has no number to fail against.
     "current_waveform": ("role",),
+    # Added 2026-09-02 from the first two questions of the acceptance corpus.
+    # `_waveform_stats` had computed min and max since Q3 and thrown them
+    # away, so a clipper's "clipping level", a clamper's "DC level shift" and
+    # a rectifier's "ripple factor" could only ever be reported as a MEAN --
+    # the wrong statistic, under the right name. Each is one statistic of the
+    # same settled window, so nothing new is simulated.
+    "peak_max": ("net",),        # the most positive the waveform reaches
+    "peak_min": ("net",),        # the most negative
+    "dc_level": ("net",),        # (max + min) / 2: where a clamper puts it
+    "ripple_factor": ("net",),   # rms of the AC part over the mean, unitless
 }
 
 #: Kinds that need a transient run, and therefore a source frequency.
 TRANSIENT_KINDS = {"ripple_pp", "ac_rms", "ac_mean", "waveform",
-                   "current_waveform"}
+                   "current_waveform", "peak_max", "peak_min", "dc_level",
+                   "ripple_factor"}
 
 #: The unit a kind is always in, used when the intent omits one. DERIVED
 #: rather than required, for the same reason the plan is: a volt target is
@@ -92,7 +103,8 @@ TRANSIENT_KINDS = {"ripple_pp", "ac_rms", "ac_mean", "waveform",
 UNIT_OF = {"dc_voltage": "V", "dc_current": "A", "ripple_pp": "V",
            "ac_rms": "V", "ac_mean": "V", "waveform": "V",
            "line_regulation": "%", "load_regulation": "%",
-           "current_waveform": "A"}
+           "current_waveform": "A", "peak_max": "V", "peak_min": "V",
+           "dc_level": "V", "ripple_factor": ""}
 
 #: Which statistic of a waveform each transient kind means. A waveform
 #: measurement's `value` is its time-weighted MEAN, so reading a ripple target
@@ -100,7 +112,9 @@ UNIT_OF = {"dc_voltage": "V", "dc_current": "A", "ripple_pp": "V",
 #: incident 5's number in a new place.
 STATISTIC = {"ripple_pp": "ripple_pp", "ac_rms": "rms",
              "ac_mean": "mean", "waveform": "mean",
-             "current_waveform": "mean"}
+             "current_waveform": "mean",
+             "peak_max": "max", "peak_min": "min",
+             "dc_level": "dc_level", "ripple_factor": "ripple_factor"}
 
 #: What a current target may name. Roles rather than refs, because a ref is a
 #: DESIGN artefact and the intent is written before any circuit exists.

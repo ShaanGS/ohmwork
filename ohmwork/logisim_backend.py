@@ -231,6 +231,12 @@ class LogisimBackend:
 
     def truth_table(self, circ_path, inputs, outputs, timeout: float = 120):
         circ_path = Path(circ_path)
+        # The table is 2**n rows and Logisim writes every one. MEASURED
+        # 2026-09-02: 20 inputs = 1,048,576 rows took 129.6 s and 75 MB of
+        # stdout on this machine, so a flat 120 s would kill a healthy run
+        # of anything past about 19 inputs. Scale with the table, never
+        # below the caller's figure.
+        timeout = max(timeout, 0.0005 * (2 ** len(inputs)))
         try:
             proc = subprocess.run(
                 logisim_command(self.exe, ["--no-splash", "--tty", "table",

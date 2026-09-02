@@ -663,12 +663,24 @@ def _waveform_stats(time: list[float], wave: list[float]) -> dict:
         dt = time[i + 1] - time[i]
         area += dt * (wave[i] + wave[i + 1]) / 2
         sq_area += dt * (wave[i] ** 2 + wave[i + 1] ** 2) / 2
+    mean = area / span
+    rms = (sq_area / span) ** 0.5
+    # The AC part's rms is sqrt(rms^2 - mean^2); over the mean it is the
+    # textbook ripple factor. Undefined (None) when the mean is zero: a pure
+    # AC waveform has no DC level to ripple about, and a number there would
+    # be a division dressed as a measurement.
+    ac_rms = max(rms ** 2 - mean ** 2, 0.0) ** 0.5
     return {
-        "mean": area / span,
-        "rms": (sq_area / span) ** 0.5,
+        "mean": mean,
+        "rms": rms,
         "min": min(wave),
         "max": max(wave),
         "ripple_pp": max(wave) - min(wave),
+        # (max + min) / 2: the midpoint of the swing, which is what "DC level
+        # shift" means for a clamper (the mean is skewed by the waveform's
+        # shape; the midpoint is not).
+        "dc_level": (max(wave) + min(wave)) / 2,
+        "ripple_factor": (ac_rms / abs(mean)) if abs(mean) > 1e-12 else None,
     }
 
 

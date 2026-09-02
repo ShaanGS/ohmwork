@@ -585,3 +585,39 @@ def test_the_reading_is_also_published_as_DATA_a_page_can_lay_out():
         assert isinstance(target["checked"], bool)
     assert any(t["checked"] for t in data["targets"])
     assert data["notes"] == list(intent.notes)
+
+
+# ------------------------------------ peak, DC level, ripple factor (2026-09-02)
+#
+# The first two questions of the acceptance corpus (a clamper asking for the
+# "DC level shift", and the manual's clipper family) wanted numbers the
+# statistics already held: min and max were computed for every waveform and
+# discarded, so those quantities could only be reported as a MEAN under the
+# wrong name.
+
+def test_the_peak_kinds_read_the_statistic_their_name_says():
+    from ohmwork.intent import STATISTIC, TARGET_KINDS, TRANSIENT_KINDS, UNIT_OF
+    for kind, stat in [("peak_max", "max"), ("peak_min", "min"),
+                       ("dc_level", "dc_level"), ("ripple_factor", "ripple_factor")]:
+        assert TARGET_KINDS[kind] == ("net",)
+        assert STATISTIC[kind] == stat
+        assert kind in TRANSIENT_KINDS          # they need a settled window
+        assert kind in UNIT_OF
+    assert UNIT_OF["ripple_factor"] == ""        # a ratio, not volts
+
+
+def test_a_dc_level_target_is_checked_against_the_midpoint_not_the_mean():
+    """A clamped 10 Vpp sine has its midpoint at the shift and its MEAN
+    somewhere else once the diode clips the tip. Both are in the stats; the
+    target must read the one its name means."""
+    from ohmwork.intent import Target, _measured_value
+
+    class M:
+        stats = {"mean": 4.117, "max": 9.3, "min": -0.7, "dc_level": 4.3,
+                 "ripple_factor": 0.02}
+        value = 4.117
+    t = Target(name="shift", kind="dc_level", quantity="DC level shift",
+               unit="V", net="vout")
+    assert _measured_value(t, M()) == 4.3
+    assert _measured_value(Target(name="p", kind="peak_max", quantity="peak",
+                                  unit="V", net="vout"), M()) == 9.3

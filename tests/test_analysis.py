@@ -763,3 +763,22 @@ def test_a_starved_zener_is_diagnosed_as_underdriven():
 
 def test_a_healthy_zener_gets_no_diagnosis():
     assert _zener_regime_reasons([8.3] * 4, [-0.004] * 4) == []
+
+
+def test_waveform_stats_publish_the_midpoint_and_the_ripple_factor():
+    """Added 2026-09-02 for clampers and rectifiers. Hand-checked: a level
+    shifted by 4 with swing +-1 has dc_level 4; a flat line has ripple 0; a
+    zero-mean wave has NO ripple factor rather than a division by zero."""
+    from ohmwork.analysis import _waveform_stats
+    import math
+    t = [i / 1000 for i in range(1001)]
+    wave = [4 + math.sin(2 * math.pi * 5 * x) for x in t]
+    s = _waveform_stats(t, wave)
+    assert s["dc_level"] == pytest.approx(4.0, abs=1e-3)
+    # sin's rms is 1/sqrt(2); over a mean of 4 the ripple factor is ~0.177
+    assert s["ripple_factor"] == pytest.approx(1 / math.sqrt(2) / 4, rel=0.01)
+    flat = _waveform_stats(t, [3.0] * len(t))
+    assert flat["ripple_factor"] == pytest.approx(0.0, abs=1e-9)
+    assert flat["dc_level"] == 3.0
+    ac = _waveform_stats(t, [math.sin(2 * math.pi * 5 * x) for x in t])
+    assert ac["ripple_factor"] is None

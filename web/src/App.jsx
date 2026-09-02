@@ -178,8 +178,10 @@ const STATISTIC_WORDS = {
   mean: 'mean of the waveform',
   rms: 'RMS of the waveform',
   ripple_pp: 'peak-to-peak ripple',
-  min: 'minimum',
-  max: 'maximum',
+  min: 'minimum (negative peak)',
+  max: 'maximum (positive peak)',
+  dc_level: 'midpoint of the swing, (max + min) / 2',
+  ripple_factor: 'ripple factor: AC rms over the mean',
 }
 
 function Chip({ tone = 'grey', children }) {
