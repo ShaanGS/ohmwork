@@ -725,3 +725,51 @@ def test_a_role_resolves_to_a_single_per_part_source_and_refuses_several():
         _resolve_role("supply", two)
     with pytest.raises(IntentError, match="V1_<part>"):
         _resolve_role("supply", {"components": [{"ref": "Vs", "type": "voltage"}]})
+
+
+# ------------------------------------ stated amplitude gate (2026-09-02)
+
+def test_a_stated_peak_to_peak_input_with_no_target_is_refused():
+    """Prompt-only, the rule held on one live run and not the next. Now the
+    gate: a stated Vpp/RMS figure in an AC question needs a checked target."""
+    import json
+    intent = json.loads(REGULATOR)
+    intent["frequency"] = 1000
+    intent["targets"] = [{"name": "shift", "kind": "dc_level",
+                          "quantity": "DC level shift", "unit": "V",
+                          "net": "vout"}]
+    intent["stated_values"] = [{"what": "input voltage amplitude",
+                                "value": "10", "unit": "Vpp"}]
+    with pytest.raises(IntentError) as caught:
+        parse_intent_reply(json.dumps(intent))
+    assert 'kind "ripple_pp"' in str(caught.value)
+    assert "10" in str(caught.value)
+
+    # With the matching target it is accepted...
+    intent["targets"].append({"name": "vin_pp", "kind": "ripple_pp",
+                              "quantity": "input voltage", "unit": "V",
+                              "net": "vin", "value": 10, "tolerance_pct": 3})
+    parse_intent_reply(json.dumps(intent))
+
+    # ...and an RMS statement wants an ac_rms target.
+    intent["stated_values"] = [{"what": "secondary voltage", "value": "12",
+                                "unit": "V RMS"}]
+    with pytest.raises(IntentError, match='kind "ac_rms"'):
+        parse_intent_reply(json.dumps(intent))
+
+
+def test_the_amplitude_gate_leaves_dc_questions_and_output_limits_alone():
+    import json
+    intent = json.loads(REGULATOR)          # frequency None: a DC question
+    intent["stated_values"] = [{"what": "input voltage", "value": "10", "unit": "Vpp"}]
+    parse_intent_reply(json.dumps(intent))
+    intent["frequency"] = 50
+    intent["stated_values"] = [{"what": "output ripple", "value": "0.1", "unit": "Vpp"}]
+    for t in intent["targets"]:
+        t.pop("value", None); t.pop("tolerance_pct", None)
+        if t["kind"] in ("dc_voltage", "dc_current"):
+            t["kind"] = "ac_mean" if t["kind"] == "dc_voltage" else "current_waveform"
+    try:
+        parse_intent_reply(json.dumps(intent))
+    except IntentError as exc:
+        assert "amplitude" not in str(exc)

@@ -550,9 +550,67 @@ def parse_intent_reply(text) -> Intent:
                 f"the numbers the question fixes, and they are the ones a "
                 f"misread corrupts invisibly.")
 
+    if frequency:
+        _check_stated_amplitudes(targets, stated)
+
     return Intent(topology=topology.strip(), targets=targets,
                   stated_values=stated, frequency=frequency,
                   notes=tuple(data.get("notes") or ()))
+
+
+#: Words in a stated value that mean "this is an AC amplitude".
+_PP_WORDS = ("vpp", "v pp", "p-p", "peak-to-peak", "peak to peak", "pk-pk")
+_RMS_WORDS = ("rms",)
+
+
+def _stated_number(item) -> float | None:
+    try:
+        return float(str(item.get("value")).strip().split()[0])
+    except (ValueError, IndexError, AttributeError):
+        return None
+
+
+def _check_stated_amplitudes(targets, stated) -> None:
+    """A stated input amplitude must be a checked target, mechanically.
+
+    The prompt rule saying so was followed on one live run and ignored on the
+    next (2026-09-02, Exp 4.7 clamper): the model listed "10 Vpp" under
+    stated_values, made no target of it, and a design whose output swung
+    3.6 V for a 10 Vpp input passed every check. A prompt nudge that a model
+    follows sometimes is not a check -- the same lesson as
+    `check_priority_encoder`. So the gate looks for every stated value whose
+    words say peak-to-peak or RMS and requires a target of the matching kind
+    carrying that number.
+    """
+    for item in stated:
+        words = f"{item.get('what', '')} {item.get('unit', '')}".lower()
+        number = _stated_number(item)
+        if number is None:
+            continue
+        if any(w in words for w in _PP_WORDS):
+            kind, label = "ripple_pp", "peak-to-peak"
+        elif any(w in words for w in _RMS_WORDS):
+            kind, label = "ac_rms", "RMS"
+        else:
+            continue
+        # Only INPUT-ish amplitudes: a stated ripple limit on the output is a
+        # bound, not an amplitude, and is handled by max/min already.
+        if any(w in words for w in ("ripple", "output")):
+            continue
+        matched = any(t.kind == kind and t.value is not None
+                      and abs(t.value - number) <= 0.02 * abs(number)
+                      for t in targets)
+        if not matched:
+            raise IntentError(
+                f"the question states an input amplitude -- "
+                f"{item.get('what')} = {item.get('value')} "
+                f"{item.get('unit', '')}".rstrip() + f" -- but no target "
+                f"checks it. Add a target of kind \"{kind}\" on the input "
+                f"node with value {_g(number)} and a tolerance of a few "
+                f"percent (recorded in notes). A stated {label} figure that "
+                f"nothing checks is the one number the design could get "
+                f"wrong unnoticed: on a live run a 10 Vpp question was "
+                f"answered by a 3 Vpp source and passed.")
 
 
 # --------------------------------------------------------- SPICE numbers
