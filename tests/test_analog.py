@@ -508,3 +508,14 @@ def test_the_prompts_handle_a_question_in_parts():
     assert "A QUESTION IN PARTS is SEPARATE circuits" in DESIGN_PROMPT
     assert "V1_i and RL_i" in DESIGN_PROMPT
     assert "A source with one end on GROUND" in INTENT_PROMPT
+
+
+def test_the_design_prompt_converts_a_peak_to_peak_figure_once():
+    """MEASURED 2026-09-02: across six clamper attempts the source came out at
+    14.1, 20 and 10 Vpp for a stated 10 Vpp -- the model wrote rms 5, then
+    amplitude 10. The prompt now states the conversion with the wrong
+    answers named, and the amplitude gate is what makes it matter."""
+    from ohmwork.analog import DESIGN_PROMPT
+    assert '"10 Vpp"  -> "amplitude": 5' in DESIGN_PROMPT
+    assert "NOT rms 5" in DESIGN_PROMPT
+    assert "A CLAMPER is a series capacitor" in DESIGN_PROMPT

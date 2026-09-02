@@ -221,6 +221,19 @@ RULES:
 7. AN AC SOURCE carries "ac" instead of "value":
      {{"ref": "V1", "type": "voltage",
        "ac": {{"kind": "sine", "rms": 12, "freq": 50}}}}
+   Give EXACTLY one of "rms" or "amplitude" (the PEAK). Convert the
+   question's figure first and do the arithmetic once:
+     "10 Vpp"  -> "amplitude": 5      (peak-to-peak / 2; NOT rms 5,
+                                       NOT amplitude 10)
+     "12 V RMS" -> "rms": 12
+     "8 V peak" -> "amplitude": 8
+   MEASURED 2026-09-02: one run wrote rms 5 for 10 Vpp (14.1 Vpp
+   delivered), the next amplitude 10 (20 Vpp). The intent checks the
+   input amplitude, so a wrong conversion fails the design.
+   A CLAMPER is a series capacitor from the source to the output node,
+   a diode from the output node to ground (or to the bias source), and
+   the load across the output. The diode must conduct on one peak and
+   block for the rest of the cycle -- a regime check enforces both.
 
 8. ORIGINS. Every component carries "origin": "stated" if the question gives
    that value, "designed" if you chose it. A "designed" value MUST carry a
