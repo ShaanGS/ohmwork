@@ -105,9 +105,19 @@ RULES:
    Wider than that and any plausible circuit satisfies it, so the check
    cannot fail.
    In an AC-FED circuit (a rectifier, anything with a source frequency) a
-   stated DC output figure is the MEAN of the settled waveform: use kind
-   "ac_mean", NEVER "dc_voltage" -- at the DC operating point an AC source
-   is zero, so a dc_voltage target there reads 0 V from a correct circuit.
+   stated DC OUTPUT figure ("a regulated 6.2 V supply") is the MEAN of the
+   settled waveform: use kind "ac_mean", NEVER "dc_voltage" -- at the DC
+   operating point an AC source is zero, so a dc_voltage target there reads
+   0 V from a correct circuit. This rule is about the OUTPUT level; a
+   clamper's "DC level shift" is "dc_level", see rule 3.
+   A STATED INPUT AMPLITUDE IS A CHECKED TARGET. "10 Vpp input", "12 V RMS
+   secondary": put a target on the input node with that value -- kind
+   "ripple_pp" for a peak-to-peak figure, "ac_rms" for an RMS one -- with a
+   tolerance of a few percent, recorded in "notes". MEASURED 2026-09-02 on
+   a clamper question stating 10 Vpp: the designed source delivered 3.1 Vpp
+   and every check passed, because the one number that would have failed
+   was never a target. The source is the model's to get right, and this is
+   the check that proves it did.
 
 3. WHERE it is measured. A VOLTAGE target names the node(s) in "net" (and
    "net2" for a voltage measured BETWEEN two nodes, such as a floating

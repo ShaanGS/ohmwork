@@ -482,3 +482,17 @@ def test_a_run_where_nothing_COULD_fail_says_so_rather_than_passing(tmp_path):
     assert "met every one" not in solution.comparison.summary
     # ...and the basis says the same thing one layer up.
     assert "0 target(s) carrying a number" in solution.basis.headline
+
+
+def test_the_intent_prompt_makes_a_stated_input_amplitude_a_checked_target():
+    """MEASURED 2026-09-02 on the Exp 4.7 clamper: the question stated a
+    10 Vpp input, the design delivered 3.1 Vpp, and every check passed
+    because the input amplitude was never a target. The rule that closes
+    that is read out of the prompt the loop actually sends."""
+    from ohmwork.analog import INTENT_PROMPT
+    assert "STATED INPUT AMPLITUDE IS A CHECKED TARGET" in INTENT_PROMPT
+    assert '"ripple_pp" for a peak-to-peak figure' in INTENT_PROMPT
+    assert '"ac_rms" for an RMS one' in INTENT_PROMPT
+    # and the DC-output rule no longer swallows a clamper's level shift
+    assert 'a\n   clamper\'s "DC level shift" is "dc_level"' in INTENT_PROMPT.replace("\r\n", "\n") \
+        or '"DC level shift" is "dc_level"' in INTENT_PROMPT
