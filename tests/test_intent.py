@@ -773,3 +773,40 @@ def test_the_amplitude_gate_leaves_dc_questions_and_output_limits_alone():
         parse_intent_reply(json.dumps(intent))
     except IntentError as exc:
         assert "amplitude" not in str(exc)
+
+
+# ------------------------------------ checked figures come from the question
+
+def test_a_checked_figure_the_question_never_states_is_FLAGGED_in_the_reading():
+    """MEASURED on the clamper: 'DC level shift' became a 5 V checked target
+    from the model's own arithmetic; a real clamper shifts ~4.3 V and a
+    correct design would have failed. Refusing broke honest intents, so the
+    reading flags it beside the figure, where the human check lives."""
+    import json
+    from ohmwork.intent import figure_is_stated
+    intent = json.loads(REGULATOR)
+    intent["frequency"] = 1000
+    intent["stated_values"] = [{"what": "input voltage amplitude", "value": "10",
+                                "unit": "Vpp"}]
+    intent["targets"] = [
+        {"name": "vin_pp", "kind": "ripple_pp", "quantity": "input voltage",
+         "unit": "V", "net": "vin", "value": 10, "tolerance_pct": 2},
+        {"name": "shift", "kind": "dc_level", "quantity": "DC level shift",
+         "unit": "V", "net": "vout", "value": 5, "tolerance_pct": 5},
+        {"name": "obs", "kind": "peak_max", "quantity": "peak", "unit": "V",
+         "net": "vout"},
+    ]
+    parsed = parse_intent_reply(json.dumps(intent))
+    by_name = {t.name: t for t in parsed.targets}
+    assert figure_is_stated(by_name["vin_pp"], parsed.stated_values) is True
+    assert figure_is_stated(by_name["shift"], parsed.stated_values) is False
+    assert figure_is_stated(by_name["obs"], parsed.stated_values) is None
+    rendered = parsed.render()
+    shift_line = next(l for l in rendered.splitlines() if l.strip().startswith("shift"))
+    assert "NOT among the stated values" in shift_line
+    vin_line = next(l for l in rendered.splitlines() if l.strip().startswith("vin_pp"))
+    assert "NOT among" not in vin_line
+    data = {t["name"]: t for t in parsed.reading_data()["targets"]}
+    assert data["shift"]["figure_stated"] is False
+    assert data["vin_pp"]["figure_stated"] is True
+    assert data["obs"]["figure_stated"] is None

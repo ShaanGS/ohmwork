@@ -284,7 +284,8 @@ class Intent:
             "targets": [{"name": t.name, "quantity": t.quantity,
                          "unit": t.unit, "where": t.where(), "ref": t.ref,
                          "wanted": t.wanted(),
-                         "checked": not t.is_observation}
+                         "checked": not t.is_observation,
+                         "figure_stated": figure_is_stated(t, self.stated_values)}
                         for t in self.targets],
             "stated": [{"what": s["what"], "value": s["value"],
                         "unit": s.get("unit", "")} for s in self.stated_values],
@@ -307,9 +308,13 @@ class Intent:
         lines.append("targets:")
         where = max((len(t.where()) for t in self.targets), default=0)
         for target in self.targets:
+            flag = ("  [figure NOT among the stated values -- check it "
+                    "against the question]"
+                    if figure_is_stated(target, self.stated_values) is False
+                    else "")
             lines.append(f"  {target.name:<{width}}  "
                          f"{target.quantity:<{quantity}}  "
-                         f"{target.where():<{where}}  {target.wanted()}")
+                         f"{target.where():<{where}}  {target.wanted()}{flag}")
         if self.stated_values:
             lines.append("stated in the question:")
             for stated in self.stated_values:
@@ -556,6 +561,28 @@ def parse_intent_reply(text) -> Intent:
     return Intent(topology=topology.strip(), targets=targets,
                   stated_values=stated, frequency=frequency,
                   notes=tuple(data.get("notes") or ()))
+
+
+def figure_is_stated(target, stated) -> bool | None:
+    """Is the number this target is checked against one the question states?
+
+    None for a target with no figure. MEASURED 2026-09-02 on the Exp 4.7
+    clamper: the model made "DC level shift" a checked target of 5 V, a
+    figure the question never gives (it asks the student to DETERMINE it). A
+    real clamper shifts by about 4.3 V, so a correct circuit would have
+    failed a check against the model's own arithmetic. Refusing outright was
+    tried and broke every honest intent that checks "delivers 9 V" without
+    repeating the 9 under stated_values -- so this is DISCLOSED in the
+    reading, beside the figure, where the one reader who can judge it looks.
+    """
+    figures = [f for f in (target.value, target.maximum, target.minimum)
+               if f is not None]
+    if not figures:
+        return None
+    numbers = [n for n in (_stated_number(item) for item in stated)
+               if n is not None]
+    return all(any(abs(f - n) <= 0.02 * max(abs(n), 1e-12) for n in numbers)
+               for f in figures)
 
 
 #: Words in a stated value that mean "this is an AC amplitude".

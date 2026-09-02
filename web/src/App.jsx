@@ -735,6 +735,14 @@ function AnalogReading({ reading }) {
             {target.checked
               ? <span className="font-medium text-green">checked: {target.wanted}</span>
               : <span className="text-ink-3">reported, not checked</span>}
+            {target.figure_stated === false && (
+              // The figure it is checked against is the MODEL's, not the
+              // question's. Said here, beside the number, because a correct
+              // circuit can fail a check against invented arithmetic.
+              <span className="basis-full text-[12px] text-amber">
+                this figure is not among the question’s stated values. Check it against the question before trusting the check.
+              </span>
+            )}
           </div>
         ))}
       </div>
