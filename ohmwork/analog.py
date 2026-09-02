@@ -106,10 +106,11 @@ RULES:
    cannot fail.
    In an AC-FED circuit (a rectifier, anything with a source frequency) a
    stated DC OUTPUT figure ("a regulated 6.2 V supply") is the MEAN of the
-   settled waveform: use kind "ac_mean", NEVER "dc_voltage" -- at the DC
-   operating point an AC source is zero, so a dc_voltage target there reads
-   0 V from a correct circuit. This rule is about the OUTPUT level; a
-   clamper's "DC level shift" is "dc_level", see rule 3.
+   settled waveform: prefer kind "ac_mean". A "dc_voltage" target in such a
+   circuit is measured the same way (over the settled window, never at the
+   operating point, where the AC source is zero), so a DC bias source's
+   voltage may be a dc_voltage target. A clamper's "DC level shift" is
+   "dc_level", see rule 3.
    A STATED INPUT AMPLITUDE IS A CHECKED TARGET. "10 Vpp input", "12 V RMS
    secondary": put a target on the input node with that value -- kind
    "ripple_pp" for a peak-to-peak figure, "ac_rms" for an RMS one -- with a

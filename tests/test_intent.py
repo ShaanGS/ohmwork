@@ -85,26 +85,36 @@ REGULATOR_CIRCUIT = {
 }
 
 
-def test_a_dc_target_in_an_ac_fed_circuit_is_refused_naming_ac_mean():
-    """MEASURED on the second paid Q3 run (claude-opus-5): the intent put
-    the 6.2 V check on a dc_voltage target, which is measured at the DC
-    operating point -- where an AC source is ZERO. Two sound designs
-    measured 0 V against a check no correct rectifier circuit can pass,
-    and the loop's feedback ("reduce the series resistance") was advice
-    about a run that means nothing. In an AC-fed circuit a DC output
-    figure is the MEAN of the settled waveform: ac_mean.
-    """
+def test_a_dc_target_in_an_ac_fed_circuit_is_measured_as_the_settled_mean():
+    """MEASURED on the second paid Q3 run (claude-opus-5): a 6.2 V dc_voltage
+    target was measured at the DC operating point -- where an AC source is
+    ZERO -- and two sound designs failed a check no rectifier can pass. The
+    first fix REFUSED such targets; on 2026-09-02 a clamper question then
+    died twice because the model insisted, correctly, that a 2 V bias source
+    is a DC voltage. So the plan converts instead: with a frequency set a DC
+    target rides the transient run as the mean of the settled window, and
+    the reading says so."""
+    from ohmwork.intent import build_analog_plan
     data = json.loads(REGULATOR)
     data["frequency"] = 50
     data["targets"].append(
         {"name": "vin_wave", "kind": "waveform", "net": "vin",
          "quantity": "input waveform", "unit": "V"})
-    with pytest.raises(IntentError) as caught:
-        parse_intent_reply(data)
-    message = str(caught.value)
-    assert "vout_nominal" in message
-    assert "ac_mean" in message
-    assert "ZERO" in message
+    intent = parse_intent_reply(data)
+    circuit = {"components": [{"ref": "V1", "type": "voltage",
+                               "ac": {"kind": "sine", "rms": 12, "freq": 50}},
+                              {"ref": "D1", "type": "zener", "device": {"vz": 8.3}},
+                              {"ref": "RL", "type": "res", "value": "1k"}],
+               "nets": {"vin": ["V1.+", "D1.cathode"], "vout": ["RL.a"],
+                        "0": ["V1.-", "D1.anode", "RL.b"]}}
+    plan = build_analog_plan(intent, circuit)
+    runs = {r["id"]: r for r in plan["runs"]}
+    assert "waveforms" in runs and "op" not in runs
+    m = next(m for m in plan["measurements"] if m.get("name") == "vout_nominal")
+    assert m["kind"] == "waveform_stats" and m["run"] == "waveforms"
+    line = next(l for l in intent.render().splitlines()
+                if l.strip().startswith("vout_nominal"))
+    assert "mean of the settled waveform" in line
 
 
 def test_a_dc_target_with_no_ac_source_is_still_welcome():

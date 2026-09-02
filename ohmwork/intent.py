@@ -312,6 +312,8 @@ class Intent:
                     "against the question]"
                     if figure_is_stated(target, self.stated_values) is False
                     else "")
+            if self.frequency and target.kind in ("dc_voltage", "dc_current"):
+                flag = "  (as the mean of the settled waveform)" + flag
             lines.append(f"  {target.name:<{width}}  "
                          f"{target.quantity:<{quantity}}  "
                          f"{target.where():<{where}}  {target.wanted()}{flag}")
@@ -535,17 +537,14 @@ def parse_intent_reply(text) -> Intent:
     # live claude-opus-5 Q3 run: two sound rectifier designs failed a
     # dc_voltage 6.2 V check at 0 V, and the loop's feedback was advice
     # about a run that means nothing.
-    if frequency:
-        dc_kinds = [t.name for t in targets
-                    if t.kind in ("dc_voltage", "dc_current")]
-        if dc_kinds:
-            raise IntentError(
-                f"{', '.join(dc_kinds)}: a dc_voltage/dc_current target is "
-                f"measured at the DC operating point, where an AC source is "
-                f"ZERO -- in this AC-fed circuit (frequency is set) no "
-                f"correct design can pass it. A DC output figure here is "
-                f"the MEAN of the settled waveform: use kind 'ac_mean' (or "
-                f"'current_waveform' for a current).")
+    # A dc_voltage/dc_current target in an AC-FED circuit used to be REFUSED
+    # here (measured at the operating point, where an AC source is zero, no
+    # correct rectifier passes a 6.2 V check -- the second paid Q3 run). The
+    # refusal was right about the operating point and wrong about the fix:
+    # MEASURED 2026-09-02, a clamper question died twice at this line because
+    # the model insisted, correctly, that a 2 V bias source is a DC voltage.
+    # So the plan now CONVERTS: with a frequency set, a DC target is measured
+    # as the mean of the settled waveform, and the reading says so.
 
     stated = tuple(data.get("stated_values") or ())
     for index, item in enumerate(stated):
@@ -800,7 +799,12 @@ def build_analog_plan(intent: Intent, circuit: dict) -> dict:
     kinds = {target.kind for target in intent.targets}
     runs, measurements = [], []
 
-    if kinds & {"dc_voltage", "dc_current"}:
+    dc_kinds = {"dc_voltage", "dc_current"}
+    # With a source frequency, a DC target is the MEAN of the settled window
+    # (see parse_intent_reply); the operating point would read the AC source
+    # as zero. Without one, the operating point is exactly the measurement.
+    dc_on_tran = bool(intent.frequency) and bool(kinds & dc_kinds)
+    if kinds & dc_kinds and not intent.frequency:
         runs.append({"id": OP_RUN, "type": "op",
                      "label": "the nominal operating point"})
     line = next((t for t in intent.targets
@@ -819,7 +823,7 @@ def build_analog_plan(intent: Intent, circuit: dict) -> dict:
         runs.append({"id": LOAD_RUN, "type": "param_sweep",
                      "label": "load regulation", "component": load_ref,
                      "values": [load.light, load.heavy]})
-    if kinds & TRANSIENT_KINDS:
+    if kinds & TRANSIENT_KINDS or dc_on_tran:
         period = 1.0 / intent.frequency
         runs.append({
             "id": TRAN_RUN, "type": "tran", "label": "steady-state waveforms",
@@ -830,12 +834,20 @@ def build_analog_plan(intent: Intent, circuit: dict) -> dict:
 
     for target in intent.targets:
         if target.kind == "dc_voltage":
-            measurements.append({"name": target.name, "run": OP_RUN,
-                                 "expr": target.expr})
+            if dc_on_tran:
+                measurements.append({"name": target.name, "kind": "waveform_stats",
+                                     "run": TRAN_RUN, "expr": target.expr})
+            else:
+                measurements.append({"name": target.name, "run": OP_RUN,
+                                     "expr": target.expr})
         elif target.kind == "dc_current":
             ref = _resolve_current(target, circuit)
-            measurements.append({"name": target.name, "run": OP_RUN,
-                                 "expr": f"I({ref})"})
+            if dc_on_tran:
+                measurements.append({"name": target.name, "kind": "waveform_stats",
+                                     "run": TRAN_RUN, "expr": f"I({ref})"})
+            else:
+                measurements.append({"name": target.name, "run": OP_RUN,
+                                     "expr": f"I({ref})"})
         elif target.kind == "line_regulation":
             supply = _resolve_role("supply", circuit)
             measurements += [

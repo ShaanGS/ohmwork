@@ -494,8 +494,7 @@ def test_the_intent_prompt_makes_a_stated_input_amplitude_a_checked_target():
     assert '"ripple_pp" for a peak-to-peak figure' in INTENT_PROMPT
     assert '"ac_rms" for an RMS one' in INTENT_PROMPT
     # and the DC-output rule no longer swallows a clamper's level shift
-    assert 'a\n   clamper\'s "DC level shift" is "dc_level"' in INTENT_PROMPT.replace("\r\n", "\n") \
-        or '"DC level shift" is "dc_level"' in INTENT_PROMPT
+    assert '"dc_level", see rule 3' in INTENT_PROMPT
 
 
 def test_the_prompts_handle_a_question_in_parts():
