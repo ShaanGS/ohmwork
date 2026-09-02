@@ -18,7 +18,7 @@ dependencies = ["spicelib"]
 llm = ["groq"]
 anthropic = ["anthropic"]
 # What a contributor needs to run the suite: `pip install -e ".[dev]"`.
-dev = ["pytest"]
+dev = ["pytest", "httpx"]  # httpx: starlette's TestClient transport
 
 # The hosted digital service. Optional for the same reason: every simulation,
 # measurement and library entry works without a web server anywhere near it,
