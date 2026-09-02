@@ -10,7 +10,7 @@
 # It does NOT check any measured number. Every test that needs a simulator
 # skips. That is by design and it is the reason for `-rs` below: pytest prints
 # a one-line reason for every skip, so the log SAYS what was not examined
-# rather than reporting a quiet pass over an unrun check. 28 of 550 tests skip
+# rather than reporting a quiet pass over an unrun check. about 30 of 870 tests skip
 # here; the same suite on a machine with the simulators skips 2.
 #
 # TO REHEARSE THIS LOCALLY ON WINDOWS, clear all THREE things a Linux runner
@@ -46,7 +46,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          pip install -e ".[web]"
           pip install pytest
 
       - name: Run the suite, printing every skip reason

@@ -62,6 +62,9 @@ DISCRIMINATOR = {
     "AND Gate": "inputs",
     "OR Gate": "inputs",
     "XOR Gate": "inputs",
+    "NAND Gate": "inputs",
+    "NOR Gate": "inputs",
+    "XNOR Gate": "inputs",
     "Adder": "width",
     "Priority Encoder": "select",
     # Every 7447 and display measured is the default shape. Facing is
@@ -71,12 +74,80 @@ DISCRIMINATOR = {
     "7-Segment Display": None,
     "Constant": None,
 }
+# The gate families are placed after the literal so the literal stays the
+# hand-measured record and the generated entries are visibly generated.
 
 # Attributes that invalidate the measurements if present, per component.
 # Every gate measured is default size, facing east. A Pin is a single port
 # AT its loc and was measured facing both east (input) and west (output),
 # so its facing is allowed -- but only those two.
 _MEASURED_PIN_FACINGS = {None, "east", "west"}
+
+# -------------------------------------------------- the gate families
+#
+# MEASURED 2026-09-02 with Logisim Evolution 4.1.0 ITSELF as the instrument,
+# not from documentation and not from Logisim's source. The method, in three
+# rounds because the first two were ambiguous in ways worth recording:
+#
+#  1. A Pin wired to each candidate coordinate with a 40-unit stub, output Pin
+#     on loc, `--tty table`, accept only if every row equals the gate's
+#     function. Reproduced the hand-measured AND2 and OR4 layouts exactly --
+#     the instrument agreeing with the fixtures is what licenses trusting it
+#     on shapes no fixture holds. But NAND/NOR/XOR passed at BOTH -50 and
+#     -60: a wire ending at -50 that came from the left passes over a port at
+#     -60 and connects to it (the T rule), so a stub cannot tell them apart.
+#  2. 10-unit stubs. Still two answers, because 10 is the port spacing and
+#     the stub's far end touched the neighbour candidate.
+#  3. A Pin placed EXACTLY on the candidate with no wire at all. One answer
+#     per shape. That is the table below.
+#
+# What it found: AND and OR inputs sit at x=-50; NAND, NOR and XOR at -60
+# (the bubble, or XOR's extra arc, adds 10); XNOR at -70 (both). The y
+# layout is the same for every family and depends only on the input count:
+#
+#     2: -20, 20         3: -20, 0, 20        4: -20, -10, 10, 20
+#     8: -40, -30, -20, -10, 10, 20, 30, 40   (no input on the axis for even n)
+#
+# AND THE XOR2 ENTRY THIS TABLE CARRIED FOR TWO MONTHS WAS WRONG. It was
+# measured as (-50, +-20) from adder_subtractor.circ by the dead-end method,
+# and the dead ends really are at -50: every one of that student's XOR input
+# wires runs to x-60 and then continues 10 more units, so the wire ENDS at
+# -50 while it CONNECTS at -60. The evidence was consistent with both
+# hypotheses and the method picked the wrong one -- the same shape as
+# incident 3, a measurement read in the wrong frame. It never bit, because
+# the emitter's routes arrive from the left and pass over the true port. It
+# also means the "genuinely floating XOR input" that file was said to contain
+# is not floating: the wire ends at x-60, exactly on the port. The student's
+# drawing was right and our table was wrong. Both corrected 2026-09-02 and
+# pinned in tests/test_logisim_gates.py, which rebuilds a probe from THIS
+# table with pins placed exactly on the ports (no wires) and has Evolution
+# evaluate it -- the one check a wire-based probe structurally cannot make.
+#
+# Multi-input XOR/XNOR are deliberately NOT here. Evolution's default for a
+# 3+ input XOR evaluated to "exactly one input high", not odd parity; that is
+# a semantics question this project has no independent reference for, so
+# only the 2-input forms, whose meaning is unambiguous, are placed.
+GATE_INPUT_X = {"AND Gate": -50, "OR Gate": -50,
+                "NAND Gate": -60, "NOR Gate": -60,
+                "XOR Gate": -60, "XNOR Gate": -70}
+GATE_INPUT_Y = {"2": (-20, 20),
+                "3": (-20, 0, 20),
+                "4": (-20, -10, 10, 20),
+                "8": (-40, -30, -20, -10, 10, 20, 30, 40)}
+GATE_INPUT_COUNTS = {"AND Gate": ("2", "3", "4", "8"),
+                     "OR Gate": ("2", "3", "4", "8"),
+                     "NAND Gate": ("2", "3", "4", "8"),
+                     "NOR Gate": ("2", "3", "4", "8"),
+                     "XOR Gate": ("2",),
+                     "XNOR Gate": ("2",)}
+
+
+def _gate_ports(name: str, inputs: str) -> list:
+    x = GATE_INPUT_X[name]
+    ports = [Port(f"in{i}", x, dy, "in")
+             for i, dy in enumerate(GATE_INPUT_Y[inputs])]
+    return ports + [Port("out", 0, 0, "out")]
+
 
 # (component name, discriminator value) -> ports.
 #
@@ -97,16 +168,8 @@ PORTS: dict[tuple[str, str | None], list[Port]] = {
 
     ("NOT Gate", None): [Port("in0", -30, 0, "in"), Port("out", 0, 0, "out")],
 
-    ("AND Gate", "2"): [Port("in0", -50, -20, "in"), Port("in1", -50, 20, "in"),
-                        Port("out", 0, 0, "out")],
-    ("OR Gate", "2"): [Port("in0", -50, -20, "in"), Port("in1", -50, 20, "in"),
-                       Port("out", 0, 0, "out")],
-    ("XOR Gate", "2"): [Port("in0", -50, -20, "in"), Port("in1", -50, 20, "in"),
-                        Port("out", 0, 0, "out")],
-
-    ("OR Gate", "4"): [Port("in0", -50, -20, "in"), Port("in1", -50, -10, "in"),
-                       Port("in2", -50, 10, "in"), Port("in3", -50, 20, "in"),
-                       Port("out", 0, 0, "out")],
+    # The multi-input gates are generated below from GATE_INPUT_X and
+    # GATE_INPUT_Y -- see the note there for how every entry was measured.
 
     # TWO outputs: cout and sum. Names/kinds inferred from the carry chain.
     ("Adder", "1"): [Port("a", -40, -10, "in"), Port("b", -40, 10, "in"),
@@ -217,12 +280,21 @@ LIB_OF = {
     "AND Gate": "#Gates",
     "OR Gate": "#Gates",
     "XOR Gate": "#Gates",
+    "NAND Gate": "#Gates",
+    "NOR Gate": "#Gates",
+    "XNOR Gate": "#Gates",
     "Adder": "#Arithmetic",
     "Priority Encoder": "#Plexers",
     "7447": "#TTL",
     "7-Segment Display": "#I/O",
     "Constant": "#Wiring",
 }
+
+
+for _name, _counts in GATE_INPUT_COUNTS.items():
+    for _n in _counts:
+        PORTS[(_name, _n)] = _gate_ports(_name, _n)
+del _name, _counts, _n
 
 
 def _describe(name, attrs):

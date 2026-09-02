@@ -15,21 +15,31 @@ finds corners and stray stubs as readily as pins.
 Worked example, the four XOR gates in adder_subtractor.circ, showing the
 number of wires touching each candidate offset:
 
-  (-50,-20)   degree 1, 1, 1, 1     <- port
-  (-50,+20)   degree 2, 1, 1, 0     <- port
-  (-60,-20)   degree 2, 2, 2, 2     <- NOT a port: a bend
-  (-60,+20)   degree 2, 2, 2, 2     <- NOT a port: a bend
+  (-50,-20)   degree 1, 1, 1, 1     <- where the wire ENDS
+  (-50,+20)   degree 2, 1, 1, 0
+  (-60,-20)   degree 2, 2, 2, 2     <- where the wire CONNECTS (the port)
+  (-60,+20)   degree 2, 2, 2, 2
 
-Degree 2 with both wires ending there is a corner, where a horizontal and a
-vertical segment meet. Proximity filtering picks those up and lands on
-(-60,+-20), which is wrong.
+THIS EXAMPLE WAS READ WRONG FOR TWO MONTHS, and the correction is the most
+important thing in this docstring. The dead-end method said (-50, +-20) was
+the port, and this file pinned it. It is not: Logisim's XOR gate is 10 units
+wider than AND/OR (the extra arc), so its inputs are at -60. Every one of
+this student's XOR input wires runs to x-60 and then continues 10 units to
+x-50 -- the wire ends at -50 and connects at -60, and both hypotheses explain
+every dead end. What settled it (2026-09-02) was Logisim Evolution itself: a
+Pin placed exactly on (-60, +-20) with no wire drives the gate, one placed
+on (-50, +-20) does not (tests/test_logisim_gates.py). It never bit in
+practice because a route arriving from the left passes over the true port
+and connects anyway, which is also why the dead-end evidence could not
+discriminate. It also means the "genuinely floating XOR input" this file was
+said to contain is not floating: its wire ends at x-60, on the port. The
+drawing was right and the table was wrong.
 
-One caution the example also shows: degree 1 PROVES a port, but degree != 1
-does not disprove one. (-50,+20) is degree 2 on the first XOR, because the
-human happened to route a corner exactly onto the pin, and degree 0 on the
-fourth, because that input is simply unwired. So dead ends give you
-CANDIDATES; confirmation comes from the hypothesis holding across every
-instance, and from a file being explained with nothing left over.
+The lesson, which the method statement above did not carry: a dead end
+proves a wire ENDS there. Whether it CONNECTS there is a second question,
+and a wire passing over a port connects without ending on it. Confirmation
+needs either a file explained with nothing left over (exp8_gates.circ, which
+has no XOR) or the evaluator saying so.
 
 Fixtures, redacted (see tests/fixtures/README.md) but otherwise byte-for-byte
 copies of files drawn by hand in a lab:
@@ -143,7 +153,9 @@ PORTS = {
     ("NOT Gate", None): [(-30, 0), (0, 0)],
     ("AND Gate", "2"): [(-50, -20), (-50, 20), (0, 0)],
     ("OR Gate", "2"): [(-50, -20), (-50, 20), (0, 0)],
-    ("XOR Gate", "2"): [(-50, -20), (-50, 20), (0, 0)],
+    # -60, not -50: see the module docstring. Measured with the evaluator,
+    # because this fixture's dead ends cannot tell the two apart.
+    ("XOR Gate", "2"): [(-60, -20), (-60, 20), (0, 0)],
     ("OR Gate", "4"): [(-50, -20), (-50, -10), (-50, 10), (-50, 20), (0, 0)],
     ("Adder", "1"): [(-40, -10), (-40, 10), (-20, -20), (-20, 20), (0, 0)],
     ("Priority Encoder", "2"): [(-40, -10), (-40, 0), (-40, 10), (-40, 20),
@@ -260,8 +272,10 @@ def test_no_tunnels_anywhere():
 def test_measured_ports_land_on_real_wire_geometry(name):
     """Every predicted port coordinate is a point the human actually wired.
 
-    One documented exception: adder_subtractor has a genuinely floating XOR
-    input, which is a mistake in the drawing, not in the table.
+    adder_subtractor used to be the documented exception, with "a genuinely
+    floating XOR input". With XOR's inputs at their true x of -60 that input
+    is wired -- the wire ends exactly on the port -- so every file is fully
+    explained and the exception is gone. The drawing was right.
     """
     _, wires, comps = read(name)
     drawn = {p for w in wires for p in w}
@@ -274,10 +288,7 @@ def test_measured_ports_land_on_real_wire_geometry(name):
             p = (c["loc"][0] + dx, c["loc"][1] + dy)
             if p not in drawn:
                 floating.append((c["name"], c["loc"], p))
-    if name == "adder_subtractor.circ":
-        assert floating == [("XOR Gate", (410, 250), (360, 270))]
-    else:
-        assert floating == []
+    assert floating == []
 
 
 def test_exp8_geometry_is_completely_explained():
@@ -544,8 +555,9 @@ def test_hand_drawn_files_are_not_necessarily_valid():
     """A parser must not assume real input is correct.
 
     adder_subtractor.circ declares no output pins at all -- S0..S3 and Cout
-    are input Pins being driven by adder outputs -- and one XOR input is
-    unwired. Both would show as errors in Logisim.
+    are input Pins being driven by adder outputs. (It was also said to leave
+    one XOR input unwired; that was our pin table being wrong, see the module
+    docstring.)
     """
     _, _, comps = read("adder_subtractor.circ")
     pins = [c for c in comps if c["name"] == "Pin"]

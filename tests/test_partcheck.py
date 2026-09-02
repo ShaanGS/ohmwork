@@ -609,10 +609,10 @@ def test_an_unknown_component_type_is_named_in_the_TARGET_s_words():
     is fed straight back to the model, so it has to name the ref and say what
     the vocabulary is."""
     circuit = q4_circuit()
-    circuit["components"].append({"ref": "X1", "type": "nand3"})
+    circuit["components"].append({"ref": "X1", "type": "nand9"})
 
     with pytest.raises(WiringError) as exc:
         derive_wiring(circuit, "ttl7447", LOGISIM)
     message = str(exc.value)
-    assert "X1" in message and "nand3" in message
+    assert "X1" in message and "nand9" in message
     assert "and2" in message, "it must list what IS available"

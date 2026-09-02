@@ -48,6 +48,7 @@ Two things, and both are enforced here rather than documented:
 import asyncio
 import functools
 import hashlib
+import json
 import hmac
 import os
 import secrets
@@ -99,8 +100,12 @@ def secret_values() -> list[str]:
     for name, value in os.environ.items():
         if not value or len(value) < 8:
             continue
-        if name.endswith("_API_KEY") or name in ("OHMWORK_PASSWORD",
-                                                 "SESSION_SECRET"):
+        # Any variable NAMED like a secret. The old allowlist was *_API_KEY
+        # plus two literals, which let GROQ_API_KEY2, HF_TOKEN and
+        # ANTHROPIC_AUTH_TOKEN through -- an allowlist of secret names is a
+        # list of the ones somebody thought of.
+        upper = name.upper()
+        if any(word in upper for word in ("KEY", "TOKEN", "SECRET", "PASSWORD")):
             out.append(value)
     return out
 
@@ -125,7 +130,18 @@ def _session_secret(password: str) -> bytes:
     configured = os.environ.get("SESSION_SECRET")
     if configured:
         return configured.encode("utf-8")
-    return hashlib.sha256(b"ohmwork-session:" + password.encode("utf-8")).digest()
+    # Salted with bytes drawn once per process. Derived from the password
+    # ALONE, a captured cookie was an offline brute-force oracle for a
+    # human-chosen passphrase (the token is timestamp.HMAC(timestamp), with
+    # no randomness of its own). The salt keeps the property this derivation
+    # exists for -- changing the password invalidates every session -- and
+    # adds one more: so does restarting the server. The desktop app makes a
+    # fresh password per launch anyway, so nothing there changes.
+    return hashlib.sha256(b"ohmwork-session:" + _PROCESS_SALT
+                          + password.encode("utf-8")).digest()
+
+
+_PROCESS_SALT = secrets.token_bytes(32)
 
 
 def _issue(secret: bytes) -> str:
@@ -150,6 +166,46 @@ def _valid(token: str | None, secret: bytes) -> bool:
 
 
 # ------------------------------------------------------------------- SSE
+
+
+#: A login body is a short JSON object. Anything bigger is not a login.
+MAX_LOGIN_BODY = 4096
+#: How long a client's failed-login bucket lives before it is forgotten.
+LOGIN_WINDOW_SECONDS = 15 * 60
+#: How many finished solves keep their download alive. Each one pins a temp
+#: directory holding the emitted file; the oldest is removed with its
+#: directory when a new one arrives.
+MAX_DOWNLOADS = 40
+
+
+def _remember(downloads: dict, token: str, path: Path) -> None:
+    """Register a download and evict the oldest past MAX_DOWNLOADS,
+    removing its temp directory. `downloads` is insertion-ordered."""
+    downloads[token] = path
+    while len(downloads) > MAX_DOWNLOADS:
+        oldest, old_path = next(iter(downloads.items()))
+        del downloads[oldest]
+        shutil.rmtree(old_path.parent, ignore_errors=True)
+
+
+def _require_digital_evaluator() -> None:
+    """Refuse a digital question when nothing can check the answer.
+
+    The internal fallback is a stub that raises on first use, so without
+    Logisim a digital solve would spend the student's model quota and then
+    fail as a generic error. Refusing first, with the remedy named, is the
+    analog path's behaviour for a missing LTspice and is the honest one here.
+    """
+    from ohmwork import logisim_backend
+    try:
+        logisim_backend.locate_logisim()
+    except FileNotFoundError as exc:
+        raise DomainError(
+            "This question needs Logisim Evolution to check the answer, and "
+            "it was not found on this machine, so the question was refused "
+            "rather than answered unchecked. The desktop installer bundles "
+            "it; otherwise install it and set OHMWORK_LOGISIM to the "
+            f"executable.\n\n{exc}") from exc
 
 
 def sse(name: str, data) -> str:
@@ -181,10 +237,18 @@ def system_status() -> dict:
                    "detail": "Logisim Evolution found; every digital answer "
                              "is checked by it"}
     except FileNotFoundError:
-        digital = {"available": True, "verification": "internal",
+        # There is no fallback evaluator: InternalLogicBackend raises on
+        # its first use. Saying "would fall back to ohmwork's own
+        # evaluator" here promised a weaker-but-working mode that did
+        # not exist -- exactly the kind of quiet overclaim this project
+        # is built to refuse. Digital questions are REFUSED until the
+        # evaluator is installed, the same way analog ones are without
+        # LTspice, and the status says so.
+        digital = {"available": False, "verification": None,
                    "detail": "Logisim Evolution was NOT found. Digital "
-                             "answers would fall back to ohmwork's own "
-                             "evaluator, which cannot be externally checked."}
+                             "questions are refused until it is installed "
+                             "(the desktop installer bundles it; set "
+                             "OHMWORK_LOGISIM to point at another copy)."}
 
     from ohmwork.simulate import locate_ltspice
     try:
@@ -251,9 +315,19 @@ def create_app(*, solver=None, analog_solver=None,
 
     # Per-process state. Five users on one small container: a dict is the
     # right size of machinery, and nothing here is worth a database.
-    failures: dict[str, int] = {}
+    #
+    # failures: client -> (count, time of the first failure in this window).
+    # A bucket EXPIRES after LOGIN_WINDOW_SECONDS. Before it did, a client
+    # that hit the limit stayed locked out until the process restarted --
+    # and behind any reverse proxy every client is one host, so ten wrong
+    # guesses from one person locked the whole class out.
+    failures: dict[str, tuple[int, float]] = {}
+    # downloads: token -> path, oldest first. Bounded: each entry pins a
+    # temp directory, and a server that never forgets one grows until the
+    # disk does. Evicting the oldest also removes its directory.
     downloads: dict[str, Path] = {}
     gate = asyncio.Semaphore(max_concurrent)
+
 
     def authorised(token) -> bool:
         return _valid(token, secret)
@@ -261,15 +335,34 @@ def create_app(*, solver=None, analog_solver=None,
     @app.post("/api/login")
     async def login(request: Request):
         client = request.client.host if request.client else "?"
-        if failures.get(client, 0) >= max_login_attempts:
-            raise HTTPException(429, "too many attempts; restart the server "
-                                     "or wait it out")
-        body = await request.json()
+        count, since = failures.get(client, (0, 0.0))
+        if count and time.time() - since > LOGIN_WINDOW_SECONDS:
+            count, since = 0, 0.0
+            failures.pop(client, None)
+        if count >= max_login_attempts:
+            raise HTTPException(
+                429, f"too many attempts; try again in about "
+                     f"{int(LOGIN_WINDOW_SECONDS - (time.time() - since)) + 1} "
+                     f"seconds")
+        # The one unauthenticated route that reads a body. Bounded, and a
+        # body that is not a JSON object is a 400, not a traceback.
+        length = request.headers.get("content-length")
+        if length and length.isdigit() and int(length) > MAX_LOGIN_BODY:
+            raise HTTPException(413, "login body too large")
+        raw = await request.body()
+        if len(raw) > MAX_LOGIN_BODY:
+            raise HTTPException(413, "login body too large")
+        try:
+            body = json.loads(raw or b"{}")
+        except ValueError:
+            raise HTTPException(400, "login body is not JSON")
+        if not isinstance(body, dict):
+            raise HTTPException(400, "login body must be a JSON object")
         given = str(body.get("password", ""))
         # Constant time, so the failure tells an attacker nothing about how
         # much of the password was right.
         if not hmac.compare_digest(given, password):
-            failures[client] = failures.get(client, 0) + 1
+            failures[client] = (count + 1, since or time.time())
             raise HTTPException(401, "wrong password")
         failures.pop(client, None)
         response = JSONResponse({"ok": True})
@@ -352,6 +445,10 @@ def create_app(*, solver=None, analog_solver=None,
                 check_analog(question)
             else:
                 check_digital(question)
+                if solver is _default_solver:
+                    # Only the real solver needs the evaluator; a test's
+                    # injected solver checks nothing and runs anywhere.
+                    _require_digital_evaluator()
         except DomainError as exc:
             yield sse("refused", {"message": f"{exc}", "download": None})
             return
@@ -391,7 +488,10 @@ def create_app(*, solver=None, analog_solver=None,
                 # this, from here" is the whole useful content of the answer.
                 # Digital-path FileNotFoundErrors are NOT this story and fall
                 # through to the plain error outcome.
-                if routing.domain != "analog":
+                if routing.domain != "analog" or "LTspice" not in f"{exc}":
+                    # A missing parts library or scratch file is not
+                    # "install LTspice", and telling someone to install a
+                    # simulator they have sends them the wrong way.
                     progress("error", {"message": f"{exc}", "download": None})
                     shutil.rmtree(workdir, ignore_errors=True)
                     return
@@ -435,8 +535,19 @@ def create_app(*, solver=None, analog_solver=None,
                 if name == "__done__":
                     break
                 yield sse(name, data)
+        except GeneratorExit:
+            # The browser went away mid-solve. Awaiting the worker here would
+            # hold one of MAX_CONCURRENT_SOLVES slots for minutes on behalf of
+            # nobody, and is the documented route to "async generator ignored
+            # GeneratorExit". Cancel it; its own finally cleans the workdir.
+            task.cancel()
+            raise
         finally:
-            await task
+            if not task.cancelled():
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
     @app.get("/api/circuit/{token}")
     async def circuit(token: str,
@@ -510,7 +621,7 @@ def _measured_payload(solution, downloads: dict) -> dict:
     with the payload so the page can keep that split visible.
     """
     token = secrets.token_urlsafe(16)
-    downloads[token] = Path(solution.asc_path)
+    _remember(downloads, token, Path(solution.asc_path))
     cmp = solution.comparison
 
     # The evaluator comes from the MEASUREMENTS, not from a config field: the
@@ -597,7 +708,7 @@ def _verified_payload(solution, downloads: dict) -> dict:
     default.
     """
     token = secrets.token_urlsafe(16)
-    downloads[token] = Path(solution.circ_path)
+    _remember(downloads, token, Path(solution.circ_path))
     table = solution.table
     backend = getattr(table, "backend", "unknown")
     return {

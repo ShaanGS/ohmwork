@@ -36,7 +36,7 @@ A language model can write you a netlist for any of them in three seconds. It ca
 <td width="33%" valign="top">
 
 ### ⚡ Digital
-Logisim `.circ` files, gate-level or with real ICs (a 7447 and a seven-segment display, for instance). **Every row** of the truth table is computed by Logisim Evolution from the emitted file and compared against the spec.
+Logisim `.circ` files from AND, OR, NAND, NOR, XOR, XNOR and NOT gates (2, 3, 4 and 8 inputs), or with real ICs (a 7447 and a seven-segment display). "Using NAND gates only" is read from the question and enforced. **Every row** of the truth table is computed by Logisim Evolution from the emitted file and compared against the spec.
 
 </td>
 <td width="33%" valign="top">
@@ -58,8 +58,8 @@ Four outcomes, four looks. **Verified** and **measured** are different words bec
 
 ### The desktop app (Windows)
 
-1. [Download the installer](https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.1.exe). It is unsigned for now: at the SmartScreen prompt pick **More info → Run anyway**. Smart App Control, if it is on, has no override and must be turned off under *Windows Security → App & browser control*.
-2. Paste a free model key (Groq, Mistral or Gemini) into the key box, or an Anthropic key if you have one. It is stored in Windows' own credential store, never in a file.
+1. [Download the installer](https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.1.exe). It is not code-signed yet: at the SmartScreen prompt pick **More info → Run anyway**. If your PC has Smart App Control turned **on**, Windows blocks every unsigned installer with no override, and Ohmwork will not run there until a signed build ships. The installer bundles Logisim Evolution 4.1.0 (GPL-3.0; source at the [logisim-evolution](https://github.com/logisim-evolution/logisim-evolution) repository).
+2. Paste a free model key (Groq, Mistral, Gemini, OpenRouter or Cerebras) into the key box. It is encrypted with your Windows account's own key (DPAPI, via Electron's `safeStorage`) and written to a file only you can read. It never reaches the page and is never uploaded by Ohmwork. An Anthropic key works from the command line (`ANTHROPIC_API_KEY` plus the `[anthropic]` extra), not yet from the app's key box.
 3. Have LTspice installed if you want analog questions. Logisim Evolution is **bundled**, pinned to 4.1.0.
 4. Type the question. Read the **reading** the app prints first (that is the one check only you can do), then take the file.
 
@@ -162,7 +162,7 @@ This is the section that matters, and none of it is softened.
 - **Simulation cannot catch a misread question.** Read `1.8k` as `1.8M`, or an enable as active-low when the question meant active-high, and the spec, the circuit and the simulator all agree with each other perfectly. That is why the **reading** is printed first, in its own colour, as step one: it is the one check only a human can do.
 - **The `.plt` plot-settings file has no machine check of any kind.** LTspice's batch mode does not read plot files. Its format was transcribed from real files shipped with LTspice, and the CLI prints `UNVERIFIED` beside every one it writes.
 - **The LTspice round trip proves self-consistency, not correctness.** The emitter and the `.asc` parser share one pin table, so a wrong pin offset is invisible to it. Every symbol in that table is therefore measured against real hand-drawn files, never taken from a datasheet.
-- **Without Logisim installed, digital results come from our own evaluator**, which then computes both the answer and anything the answer would be checked against. Such results are labelled `internal` everywhere they appear. The desktop app bundles Logisim so this never happens there.
+- **Without Logisim installed, digital questions are refused.** There is no mode where our own evaluator computes the answer instead: a table nobody outside this codebase checked would be worth less than no answer, so the status screen says the evaluator is missing and the question is not attempted. The desktop app bundles Logisim so this never happens there.
 - **Prose is not verified and cannot be.** "Explain your design choices" has no computable answer. The best available is *local falsifiability*: the tool prints the truth-table rows the sentence is about directly above the sentence, so you can check one against the other without leaving the page.
 
 ## Why the defences look excessive
@@ -203,8 +203,8 @@ Keys live in the environment only. There is no config-file path and no CLI flag 
 
 | variable | meaning |
 |---|---|
-| `GROQ_API_KEY`, `MISTRAL_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` … | provider keys; set the ones you have |
-| `OHMWORK_LLM` | `groq` (default), `mistral`, `gemini`, `anthropic`, or `pool` to rotate across every configured provider when one rate-limits |
+| `GROQ_API_KEY`, `MISTRAL_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `CEREBRAS_API_KEY`, `ANTHROPIC_API_KEY` | provider keys; set the ones you have |
+| `OHMWORK_LLM` | `groq` (default), `mistral`, `gemini`, `openrouter`, `cerebras`, `anthropic`, or `pool` to rotate across every configured provider when one rate-limits |
 | `OHMWORK_LLM_MODEL` | model id override. `python -m ohmwork --list-models` prints what your account can actually serve |
 | `OHMWORK_LTSPICE` | path to `LTspice.exe` if it is not in a standard location |
 | `OHMWORK_LOGISIM` | path to Logisim Evolution; the desktop app sets this to its bundled copy |
@@ -238,7 +238,7 @@ tests/                      800+ tests; every simulation number carries provenan
 python -m pytest
 ```
 
-Tests that need a simulator skip cleanly when it is absent and say which one they wanted, so the suite is green on a machine with neither. CI runs exactly that configuration on Linux; the `docker` workflow builds the server image and runs Logisim inside it under a real display before anything is called deployable.
+Install the test runner with `pip install -e ".[dev]"`. Tests that need a simulator skip cleanly when it is absent and say which one they wanted, so the suite is green on a machine with neither. CI runs exactly that configuration on Linux, with the server extras installed so the login, rate-limit and key-scrubbing tests run too. The `docker` workflow builds the server image, starts Logisim's Java runtime under a virtual display inside it, and checks that the server boots, serves the page, refuses anonymous solves and refuses to start without a password.
 
 macOS is source-only and digital-only for now: LTspice exists there, but no baseline in this project has been measured on it, and this project does not claim numbers it has not measured.
 

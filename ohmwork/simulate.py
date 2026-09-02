@@ -110,7 +110,7 @@ def _read_results(raw_path: Path, log_path: Path) -> Results:
 def _log_tail(log_path: Path, lines: int = 15) -> str:
     if not log_path.exists():
         return "(no log file was written)"
-    text = log_path.read_text(errors="replace")
+    text = log_path.read_text(encoding="utf-8", errors="replace")
     return "\n".join(text.splitlines()[-lines:])
 
 

@@ -17,6 +17,8 @@ dependencies = ["spicelib"]
 # no test in this repo touches the network.
 llm = ["groq"]
 anthropic = ["anthropic"]
+# What a contributor needs to run the suite: `pip install -e ".[dev]"`.
+dev = ["pytest"]
 
 # The hosted digital service. Optional for the same reason: every simulation,
 # measurement and library entry works without a web server anywhere near it,

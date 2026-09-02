@@ -123,11 +123,14 @@ spirit of the old rule is enforced harder rather than weaker — `design.solve`
 *raises* rather than returning a circuit Logisim disagreed with, so a failed
 solve produces an error and no download at all.
 
-Two consequences kept in code rather than in prose: the analog path is not
-served from the web endpoint at all, and the offline fallback evaluator
-(`verification: "internal"`, which computes the result *and* anything the
-result would be checked against) is labelled as such in every response that
-carries it.
+Two consequences kept in code rather than in prose. The analog path IS served
+from the same endpoint since 2026-08-30, but as a different event (`measured`,
+never `verified`) with the weaker claim spelled out, and it is refused outright
+when LTspice is absent. And there is no offline fallback evaluator: without
+Logisim a digital question is refused before a model is asked, because a table
+nothing outside this codebase computed would carry the badge without the
+evidence. (`InternalLogicBackend` exists as a stub that raises; it has never
+produced a result and the status route says so.)
 
 ---
 
@@ -214,12 +217,16 @@ as the single byte `0xB5` (cp1252), so a `100µ` in a real file is invalid UTF-8
 `parser.ASC_ENCODING` is cp1252. The emitter writes pure ASCII (`100u`, never
 the micro sign), and a test holds that line.
 
-**Connectivity uses net labels, never routed wires.** Both formats determine
-connectivity geometrically — a wire connects to a pin only if an endpoint lands
-exactly on it — and auto-routing that is a real pathfinding problem that gets
-silently wrong. So for LTspice the emitter gives each pin a 16-unit stub with a
-`FLAG` on the free end; same label, same net. Net `0` is ground. Nothing is
-routed.
+**Connectivity is geometric in both formats, so routing is conservative and
+checked.** A wire connects to a pin only if an endpoint lands exactly on it,
+and auto-routing is a pathfinding problem that fails silently. The LTspice
+emitter began with no routing at all (a 16-unit stub and a `FLAG` per pin; same
+label, same net) and since 2026-08-31 routes real wires where a straight path
+touches nothing foreign, falling back to a label for any net it cannot route
+cleanly; the geometric parser then rebuilds connectivity from those wires, so
+the round trip is stronger than the label era, not weaker. Net `0` is ground.
+The Logisim emitter routes orthogonally in channels and never splits a wire at
+a crossing, for the reason under "Logisim" below.
 
 ### Logisim `.circ` (2.7.1)
 
@@ -351,6 +358,9 @@ defence that exists because of it.
 | 22 | A generated bridge rectifier with a C-L-C filter, which SIMULATED fine and well inside its timeout | LTspice wrote a **335 MB** ASCII result for a 100 ms saved window, because the undamped LC rang and the solver took ever smaller steps. Nothing timed out -- the subprocess had already exited; what would not finish was parsing a third of a gigabyte. The run hung with no error and no ceiling | `simulate.check_raw_size`: a result too large to be about a circuit is refused, and the message says RINGING and what to change, because it is fed back to a design loop |
 | 23 | An intent that read the real Q3 almost perfectly, including "load current waveform" | the only waveform kind measured V(net), so the load CURRENT came back as the load NODE's voltage -- reported under a name that says current, with nothing to catch it, because an observation carries no number to fail against | a `current_waveform` kind that takes a role and emits `I(RL)`, and a reading that prints WHAT each target is measured on, so a voltage under a current's name is visible to the one reader who can act on it |
 | 24 | A priority-encoder solve, **verified in 1 attempt, externally, 32 of 32 rows** -- over a WRONG spec | the model wrote `Y0 = EN&(D3\|D1)` while its own note said "Priority order is D3 highest, then D2, D1, D0": with D2 and D1 both high the code reads 11 where priority says 10. The circuit implements the spec faithfully, Logisim confirms every row, and nothing mechanical downstream can notice -- this is the documented limit happening live, on an acceptance-set question, caught only because a person read the reading screen before the green badge | a prompt nudge was tried first and FAILED, measurably: the same model re-wrote the same wrong `Y0` and added a note *claiming* the masking the algebra does not do. So the defence is mechanical: `check_priority_encoder`, a deterministic gate that brute-forces whether ANY priority order explains the spec's own table, and feeds the differing rows back. The reading screen remains the only general defence, which is why it is unskippable |
+| 25 | The XOR2 pin entry, measured by the dead-end method from a student's file and pinned for two months | the port is at x=-60, not -50: Logisim's XOR is 10 wider than AND/OR. Every one of that student's XOR wires ran to -60 and continued 10 units, so the wire ENDED at -50 and CONNECTED at -60, and both hypotheses explained every dead end. It never bit because a route arriving from the left passes over the true port. The "floating XOR input" that file was said to contain was not floating; the drawing was right and the table was wrong | a probe with a Pin placed EXACTLY on each candidate coordinate and no wire, evaluated by Logisim Evolution -- the one check a wire-based probe structurally cannot make. `tests/test_logisim_gates.py` runs it for every gate family the emitter can place; the method statement in `test_logisim_geometry.py` now says a dead end proves where a wire ENDS, not where it CONNECTS |
+| 26 | "Realise a full adder using NAND gates only", answered VERIFIED | with AND, OR and NOT gates. Every row matched, Logisim agreed, and the answer did not use the gates the question asked for. Nothing in the loop ever looked at WHICH gates a design used | `design.gate_family_of` reads the restriction from the question's words deterministically, the design prompt states it, and `check_gate_family` refuses a design outside the family BEFORE the evaluator runs, naming the offending components. The vocabulary that made it possible to comply -- NAND, NOR, XNOR, 3/4/8-input gates -- landed the same day (row 25's method) |
+| 27 | A rate-limited provider mid-solve, shown as **No verified circuit** in red with "nothing is returned when the evaluator disagrees" beneath it | the design loops caught `PoolExhausted` through `except LLMError` (it is a subclass) and re-wrapped it as a failed design; a lone provider giving up on a rate limit raised `DesignError` outright. The evaluator was never asked, and the page told the owner their circuit had failed | both loops let `PoolExhausted` through untouched and the single-provider give-up raises it too, naming the member; the page renders the UNAVAILABLE card. Pinned in `test_design.py` and `test_server.py` |
 
 ### The two rules most of these converge on
 
@@ -395,11 +405,13 @@ confidently. Nothing downstream can catch it. Only a human comparing the
 extracted values against the original can, which is why the dry run prints them
 back and why extraction must transcribe rather than summarise.
 
-**The internal fallback computes both sides.** With Logisim absent,
-`InternalLogicBackend` computes the result *and* anything the result would be
-checked against. It declares `verification = "internal"`, measurements inherit
-that, and any report containing internal results leads with why that is weaker.
-No published library entry currently carries one, and a test asserts it.
+**There is no internal fallback, and the machinery to label one is kept.**
+`InternalLogicBackend` is a stub that raises on first use; without Logisim a
+digital question is refused up front. The `verification = "internal"` label,
+the report wording and the library flag still exist so that if an in-house
+evaluator ever lands it cannot present its answer with an outside tool's
+standing. No published library entry carries an internal result, and a test
+asserts it.
 
 **An independent implementation is not an independent evaluator.**
 `exp8_gates.circ` is a circuit we did not write, and comparing our generated
@@ -478,7 +490,6 @@ what unblocks it.
 | item | why deferred |
 |---|---|
 | the geometric `.circ` parser | external verification is strictly stronger than a round trip through our own code — Logisim evaluating the emitted file catches a geometry bug that an emitter and parser sharing a pin table would agree on. The parser earns its place for check-mine mode and for reading foreign files, not for checking our own output. `LogisimTarget.round_trip` therefore returns `ran=False`, and its reason names what stands in its place |
-| Logisim Evolution's native geometry, and the 7447 | blocked on a **fixture**. Every `.circ` here is 2.7.1, and no component's geometry may be added without a real file containing it. The verbatim question text for the 7447 question is in hand; the format evidence is not |
 | mirrored placements | the emitter never emits them and human-drawn input is out of scope. The parser refuses them rather than guessing. The derivation is a 20-minute job by the same method when needed |
 | a layout engine | neither target has enough real examples yet to say what a placer would have to generalise over. What v1.0 owes a student is a correct file and an honest label saying the layout is mechanical |
 | the vision / extraction layer | the seam exists (`llm.py`, `extract.py`) and text extraction works. Image extraction is blocked on provider availability — the free tier measured for this project served no multimodal model at all, which is precisely why `--list-models` and a self-correcting model error were built before any key existed. The provider pool added since can include vendors whose free tiers do serve a multimodal model; whether one of them can read a photographed lab-manual page is UNMEASURED here, and stays deferred until it has been |

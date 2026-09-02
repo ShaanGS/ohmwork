@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, net, safeStorage, session } from "electron";
 import { createServer } from "node:net";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -169,6 +169,11 @@ async function startBackend() {
 
   let diagnostics = "";
   backend.stderr.on("data", (chunk) => { diagnostics += chunk.toString(); });
+  // stdout is piped and MUST be drained: an undrained pipe fills after ~64 KB
+  // and the Python process blocks on its next print, mid-solve, forever --
+  // the UI shows a spinner and nothing else. The solver logs progress to
+  // stdout, so this is not hypothetical on a long analog run.
+  backend.stdout.on("data", () => {});
   backend.once("exit", (code) => {
     if (code !== 0 && !quitting) {
       dialog.showErrorBox("Ohmwork stopped", diagnostics || `The local backend exited with code ${code}.`);
@@ -238,12 +243,12 @@ app.whenReady().then(async () => {
     // The backend reads its keys at process start. A relaunch avoids a second
     // code path that mutates a running server, and guarantees the renderer
     // never sees the key after the one IPC call that stores it.
-    setTimeout(() => { app.relaunch(); app.exit(0); }, 150);
+    setTimeout(restartWithNewKeys, 150);
     return { restarting: true };
   });
   ipcMain.handle("desktop:save-provider-keys", async (_event, values) => {
     await writeStoredKeys(values);
-    setTimeout(() => { app.relaunch(); app.exit(0); }, 150);
+    setTimeout(restartWithNewKeys, 150);
     return { restarting: true };
   });
   await startBackend();
@@ -259,5 +264,34 @@ app.on("before-quit", () => {
   // raises "Ohmwork stopped" over a backend that stopped because it was told
   // to.
   quitting = true;
-  if (backend && !backend.killed) backend.kill();
+  killBackend();
 });
+
+function killBackend() {
+  // Kill the TREE, not the bootloader. On Windows `child.kill()` terminates
+  // only the PyInstaller stub; the Python server it unpacked -- and any
+  // java.exe it spawned for Logisim -- lives on as an orphan that also holds
+  // `resources/` open and breaks the next install. taskkill /T takes the
+  // children with it. Elsewhere the process group does the same job.
+  if (!backend || backend.killed || backend.exitCode !== null) return;
+  try {
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/pid", String(backend.pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      try { process.kill(-backend.pid, "SIGTERM"); } catch { backend.kill(); }
+    }
+  } catch {
+    backend.kill();
+  }
+}
+
+function restartWithNewKeys() {
+  // `app.exit()` does NOT fire `before-quit`, so relaunching straight after a
+  // key save used to leave the old backend running with the old keys while
+  // the new instance spawned a second one on a new port -- one orphaned
+  // ohmwork-server.exe per key saved. Kill first, then relaunch.
+  quitting = true;
+  killBackend();
+  app.relaunch();
+  app.exit(0);
+}

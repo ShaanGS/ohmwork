@@ -392,7 +392,7 @@ function Solver({ onExpired }) {
 
 function Header({ status, desktop, onSettings }) {
   const ok = status && status.providers.length > 0 && status.analog.available
-    && status.digital.verification !== 'internal'
+    && status.digital.available && status.digital.verification !== 'internal'
   return (
     <header className="sticky top-0 z-10 border-b border-line bg-page/85 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between px-5">
@@ -508,7 +508,10 @@ function FirstRun({ status, desktop, onOpenSettings }) {
   if (!status) return null
   const noKey = status.providers.length === 0
   const noLtspice = !status.analog.available
-  const internalOnly = status.digital.verification === 'internal'
+  // No Logisim means digital questions are REFUSED, not answered by some
+  // weaker evaluator: there is none. The status detail says so.
+  const internalOnly = !status.digital.available
+    || status.digital.verification === 'internal'
   if (!noKey && !noLtspice && !internalOnly) return null
 
   return (
@@ -907,15 +910,25 @@ function Measured({ measured }) {
   // says nothing numeric was checked instead of reading as a pass.
   const external = measured.verification === 'external'
   const nothingChecked = !measured.checked
-  const allOk = measured.outcomes.every((o) => !o.checked || o.ok)
+  const checkedOutcomes = measured.outcomes.filter((o) => o.checked)
+  const passed = checkedOutcomes.filter((o) => o.ok).length
+  const allOk = passed === checkedOutcomes.length
   const failed = measured.regimes_failed.length > 0
   const tone = nothingChecked || failed || !allOk ? 'amber' : 'green'
+  // The headline counts PASSES over CHECKS. The server never returns a
+  // measured result with a missed target (the loop retries instead), but a
+  // pass-shaped sentence over a miss is the one thing this card must never
+  // print, so the count is computed here rather than assumed.
   const headline = nothingChecked
     ? 'Simulated. No number could be checked.'
-    : `Meets the question’s figures: ${measured.checked} of ${measured.checked} checked`
+    : allOk
+      ? `Meets the question’s figures: ${passed} of ${checkedOutcomes.length} checked`
+      : `Missed ${checkedOutcomes.length - passed} of ${checkedOutcomes.length} checked figures`
   const sub = nothingChecked
     ? `The question stated no figure to hit, so ${measured.evaluator} ran the circuit and reported these values. None of them could pass or fail.`
-    : `${measured.evaluator} ran the circuit and every figure the question stated came out inside tolerance.`
+    : allOk
+      ? `${measured.evaluator} ran the circuit and every figure the question stated came out inside tolerance.`
+      : `${measured.evaluator} ran the circuit; the rows marked red are outside the tolerance the reading set.`
   const showWanted = measured.outcomes.some((o) => o.checked)
   return (
     <Surface tone={tone} className="space-y-4 p-5">

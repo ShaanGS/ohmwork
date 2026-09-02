@@ -113,10 +113,11 @@ UNMEASURED_ADVICE = (
 )
 
 ANALOG_ADVICE = (
-    "This endpoint answers DIGITAL logic questions only, because the only "
-    "simulator it can run on a server is Logisim. Analog questions are not "
-    "unsupported by ohmwork -- they are solved on the command line, locally, "
-    "where LTspice is installed."
+    "This is an ANALOG question and it reached the digital loop, which "
+    "checks answers with Logisim and cannot simulate voltages or waveforms. "
+    "Ohmwork answers analog questions locally with LTspice: the desktop app and the "
+    "CLI route there automatically, so if you see this, say 'in LTspice' in "
+    "the question or pass --domain analog."
 )
 
 

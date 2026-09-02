@@ -120,8 +120,9 @@ proxies `/api` to that server, so you get hot reload against the real backend.
 
 ## What the server does and does not promise
 
-- **Every circuit it returns was evaluated by Logisim Evolution**, as a file,
-  row by row against the specification. A design the evaluator disagrees with
+- **Every digital circuit it returns was evaluated by Logisim Evolution**, as
+  a file, row by row against the specification; every analog one was run by
+  LTspice, and is returned as `measured`, a deliberately weaker claim. A design the evaluator disagrees with
   is thrown away and redone; if none survives, you get an error rather than a
   circuit.
 - **It cannot check the reading.** The specification it worked from is printed
@@ -173,11 +174,11 @@ loops can run against the real simulators.
 server runs directly, the way it already runs on the machine it was developed
 on.
 
-Be precise about what that costs, because it is not free: `server.py` is
-digital-only today. `domain.classify` and `analog.solve_analog` exist and are
-tested, but nothing wires them into a request path, and doing so means
-deciding what a browser sees while LTspice runs for several seconds. The
-tunnel makes analog POSSIBLE, which is more than any of the rows above can
-say; it does not make it done.
+Be precise about what that buys: `server.py` serves BOTH halves (since
+2026-08-30, streaming the reading and each attempt while LTspice runs), but
+the analog half only ever answers on a machine that has LTspice, which is a
+Windows GUI application. A tunnel from a Windows PC is therefore the only
+hosted shape in which analog questions are answered at all; every row above
+refuses them with the download named.
 
 The obvious cost is the obvious one: the machine has to be awake.

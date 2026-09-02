@@ -928,3 +928,80 @@ def test_every_basis_states_what_it_cannot_prove(tmp_path):
     notes = {note["item"]: note for note in part.question_data["design_notes"]}
     assert "verification basis" in notes
     assert "wiring, as checked" in notes
+
+
+# ------------------------------------------------ "using NAND gates only"
+#
+# Found by the 2026-09-02 gap review: a full adder "using NAND gates only"
+# came back VERIFIED as AND/OR/NOT. Every row matched, Logisim agreed, and
+# the answer did not use the gates the question named -- verified-and-wrong,
+# the exact species this project exists to prevent. Nothing in the loop ever
+# looked at WHICH gates a design used.
+
+def test_the_gate_family_is_read_from_the_questions_words():
+    from ohmwork.design import gate_family_of
+    for text in ["Realise a full adder using NAND gates only.",
+                 "Implement the function using only NAND gates",
+                 "Design a half subtractor with NOR gates alone",
+                 "Build an XOR gate from NAND gates only in Logisim",
+                 "NAND-only implementation of a 2:1 mux"]:
+        assert gate_family_of(text) in ("nand", "nor"), text
+    assert gate_family_of("Build an XOR gate from NAND gates only") == "nand"
+    assert gate_family_of("Design a half subtractor with NOR gates alone") == "nor"
+
+
+def test_a_question_that_merely_mentions_a_gate_is_not_restricted():
+    from ohmwork.design import gate_family_of
+    assert gate_family_of("Design a 2-to-4 decoder with an active-high enable") is None
+    assert gate_family_of("Compare a NAND gate and a NOR gate") is None
+    # Two families named as restrictions cancel: the check disarms rather
+    # than guessing which one the question meant.
+    assert gate_family_of("using NAND gates only and NOR gates only") is None
+
+
+def test_a_design_outside_the_family_is_refused_BEFORE_the_evaluator():
+    from ohmwork.design import check_gate_family
+    circuit = {"components": [{"ref": "A", "type": "input_pin"},
+                              {"ref": "G1", "type": "and2"},
+                              {"ref": "G2", "type": "nand2"},
+                              {"ref": "K", "type": "low"},
+                              {"ref": "Y", "type": "output_pin"}]}
+    with pytest.raises(DesignError) as caught:
+        check_gate_family(circuit, "nand")
+    message = str(caught.value)
+    assert "G1 (and2)" in message and "G2" not in message
+    assert "NAND gates ONLY" in message
+    assert "nand2, nand3, nand4, nand8" in message      # names what IS allowed
+    check_gate_family(circuit, None)                     # no constraint, no check
+    check_gate_family({"components": [{"ref": "G2", "type": "nand4"},
+                                      {"ref": "Y", "type": "output_pin"}]}, "nand")
+
+
+def test_the_nand_only_rule_reaches_the_prompt_and_the_gate(tmp_path):
+    """End to end through solve(): the model is TOLD the rule, and a design
+    that ignores it is a rejected attempt with the offending gate named."""
+    from ohmwork import design as design_module
+    from ohmwork.design import solve
+
+    prompts = []
+    real_format = design_module.DESIGN_PROMPT.format
+
+    class Recording(str):
+        def format(self, **kw):
+            prompts.append(kw.get("gate_rule", ""))
+            return real_format(**kw)
+
+    original = design_module.DESIGN_PROMPT
+    design_module.DESIGN_PROMPT = Recording(original)
+    try:
+        # SPEC_JSON is a decoder; the design reply uses AND gates, which the
+        # constraint must refuse without ever calling the backend.
+        provider = FlubbingProvider([SPEC_JSON, design_reply(), design_reply()])
+        with pytest.raises(DesignError):
+            solve("Design a 2-to-4 decoder with an active-high enable using "
+                  "NAND gates only", provider=provider,
+                  backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+                  workdir=tmp_path, attempts=2)
+    finally:
+        design_module.DESIGN_PROMPT = original
+    assert prompts and all("NAND GATES ONLY" in p for p in prompts)

@@ -150,8 +150,10 @@ Return ONE JSON object and nothing else:
 RULES:
 1. Use ONLY these component types, with EXACTLY these ports:
 {types}
-   The port names are zero-indexed. There is no 3-input AND and no NAND or
-   NOR: build what you need from these.
+   The port names are zero-indexed. Gates come in 2, 3, 4 and 8-input
+   forms (and3, nand4, or8 ...); XOR and XNOR are 2-input only. Use the
+   widest gate that fits rather than a tree of 2-input gates.
+   {gate_rule}
 2. Every input signal is an "input_pin" and every output signal an
    "output_pin", and its "ref" is EXACTLY the specification's signal name:
      inputs:  {inputs}
@@ -351,6 +353,76 @@ def parse_spec_reply(text: str) -> Spec:
 
 
 # --------------------------------------------------------------- the plan
+
+#: "Realise a full adder using NAND gates only." Before 2026-09-02 that
+#: question came back VERIFIED with a circuit of AND, OR and NOT: the table
+#: matched, the evaluator agreed, and the answer did not use the gates the
+#: question asked for. Nothing in the loop looked at WHICH gates were used.
+#: Verified-and-wrong is the failure this project exists to prevent, so the
+#: constraint is read from the question deterministically, told to the model,
+#: and ENFORCED on the design before the evaluator ever sees it.
+GATE_FAMILY_WORDS = {
+    "nand": ("nand2", "nand3", "nand4", "nand8"),
+    "nor": ("nor2", "nor3", "nor4", "nor8"),
+}
+#: Types allowed in every design whatever the family: they are not gates.
+NON_GATE_TYPES = frozenset({"input_pin", "output_pin", "high", "low"})
+
+_FAMILY_PATTERNS = (
+    # "using NAND gates only", "using only NAND gates", "NAND gates only",
+    # "with NAND gates alone", "NAND-only", "only NAND gate(s)"
+    re.compile(r"\b(nand|nor)[\s-]*(?:gates?)?[\s-]*only\b", re.I),
+    re.compile(r"\bonly[\s-]*(nand|nor)[\s-]*gates?\b", re.I),
+    re.compile(r"\b(nand|nor)[\s-]*gates?[\s-]*alone\b", re.I),
+    re.compile(r"\busing[\s-]*(?:only[\s-]*)?(nand|nor)[\s-]*gates?\b", re.I),
+    re.compile(r"\b(?:exclusively|solely|purely)[\s-]*(?:with|using|from)?"
+               r"[\s-]*(nand|nor)[\s-]*gates?\b", re.I),
+)
+
+
+def gate_family_of(question: str) -> str | None:
+    """Which single gate family the question restricts the design to, or None.
+
+    Deterministic and deliberately narrow: it fires on the phrasings a lab
+    manual uses for the universal-gates exercise and on nothing else. A
+    question that merely MENTIONS a NAND gate is not restricted by it.
+    """
+    families = {m.group(1).lower()
+                for pattern in _FAMILY_PATTERNS
+                for m in pattern.finditer(question)}
+    if len(families) == 1:
+        return families.pop()
+    return None
+
+
+def check_gate_family(circuit: dict, family: str | None) -> None:
+    """Refuse a design that uses a gate outside the family the question set.
+
+    Written to be fed back to the model: it names every offending component
+    and the types that ARE allowed.
+    """
+    if family is None:
+        return
+    allowed = set(GATE_FAMILY_WORDS[family]) | NON_GATE_TYPES
+    wrong = [(c.get("ref"), c.get("type"))
+             for c in circuit.get("components", [])
+             if c.get("type") not in allowed]
+    if wrong:
+        listed = ", ".join(f"{ref} ({kind})" for ref, kind in wrong)
+        raise DesignError(
+            f"the question asks for {family.upper()} gates ONLY, but the design "
+            f"uses {listed}. Build every function from "
+            f"{', '.join(GATE_FAMILY_WORDS[family])} (an inverter is a "
+            f"{family}2 with both inputs on the same net); pins and constants "
+            f"are allowed, nothing else is.")
+
+
+GATE_FAMILY_RULE = (
+    "THE QUESTION ASKS FOR {FAMILY} GATES ONLY. Every gate in the design "
+    "must be a {family}2, {family}3, {family}4 or {family}8. An inverter is a "
+    "{family}2 with both inputs on the same net. A design containing any "
+    "other gate type is rejected before it is evaluated.")
+
 
 def type_vocabulary() -> str:
     """The component types and their ports, READ OUT OF THE TARGET.
@@ -840,6 +912,12 @@ def solve(question: str, *, provider=None, backend=None, workdir,
 
     types = type_vocabulary()
 
+    family = gate_family_of(question)
+    gate_rule = (GATE_FAMILY_RULE.format(family=family, FAMILY=family.upper())
+                 if family else "")
+    if family:
+        emit("constraint", {"gate_family": family})
+
     # A question that says "using the 7447-decoder IC" is not asking for an
     # equivalent built from gates, and a loop that silently gives it one has
     # answered a neighbouring question.
@@ -853,6 +931,7 @@ def solve(question: str, *, provider=None, backend=None, workdir,
         retry = "" if last_error is None else RETRY_BLOCK.format(error=last_error)
         prompt = DESIGN_PROMPT.format(
             spec=spec.render(), types=types, parts_rule=parts_rule,
+            gate_rule=gate_rule,
             inputs=", ".join(spec.inputs), outputs=", ".join(spec.outputs),
             retry=retry)
         emit("attempt", {"index": index, "status": "designing"})
@@ -896,6 +975,9 @@ def solve(question: str, *, provider=None, backend=None, workdir,
         # prevent lies. The Reply already carries which member answered.
         try:
             circuit = _json_object(reply.text, "design")
+            # Before the evaluator: a design in the wrong gate family would
+            # pass every row and still not answer the question.
+            check_gate_family(circuit, family)
             data, circ_path, table, comparison, basis = _attempt(
                 circuit, question, spec, reply.provider, reply.model,
                 backend, workdir, index, part=part)

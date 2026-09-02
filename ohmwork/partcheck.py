@@ -86,13 +86,25 @@ LEVELS = {"high": 1, "low": 0}
 #:
 #: Arguments arrive in the order `pin_names` reports the type's input ports,
 #: which is the same order the emitter wires them.
+def _all(values):
+    return int(all(values))
+
+
+def _any(values):
+    return int(any(values))
+
+
 GATE_LOGIC = {
     "not": lambda values: 1 - values[0],
-    "and2": lambda values: values[0] & values[1],
-    "or2": lambda values: values[0] | values[1],
     "xor2": lambda values: values[0] ^ values[1],
-    "or4": lambda values: values[0] | values[1] | values[2] | values[3],
+    "xnor2": lambda values: 1 - (values[0] ^ values[1]),
 }
+for _n in (2, 3, 4, 8):
+    GATE_LOGIC[f"and{_n}"] = _all
+    GATE_LOGIC[f"or{_n}"] = _any
+    GATE_LOGIC[f"nand{_n}"] = lambda values: 1 - _all(values)
+    GATE_LOGIC[f"nor{_n}"] = lambda values: 1 - _any(values)
+del _n
 
 
 class WiringError(Exception):

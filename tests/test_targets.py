@@ -76,7 +76,7 @@ def test_a_logisim_question_is_no_longer_rejected_for_lacking_a_ground():
 
 def test_unknown_types_are_reported_in_the_targets_vocabulary():
     logisim, ltspice = get_target("logisim"), get_target("ltspice")
-    comps = [{"ref": "G1", "type": "nand2"}]
+    comps = [{"ref": "G1", "type": "buffer"}]
 
     digital = "; ".join(check_component_types(logisim, comps))
     assert "Logisim component" in digital
@@ -95,17 +95,17 @@ def test_each_target_knows_its_own_pin_names():
 
 
 def test_logisim_pin_names_route_through_the_measured_table():
-    # or4's inputs are measured; a 3-input OR is not, and asking must fail
+    # or4 is measured; a 5-input OR is not (probed only through wires), and asking must fail
     # rather than interpolate.
     from ohmwork.logisim_symbols import UnmeasuredGeometryError
     target = get_target("logisim")
     assert len(target.pin_names("or4")) == 5
-    target.TYPE_MAP["or3_probe"] = ("OR Gate", {"inputs": "3"})
+    target.TYPE_MAP["or5_probe"] = ("OR Gate", {"inputs": "5"})
     try:
         with pytest.raises(UnmeasuredGeometryError):
-            target.pin_names("or3_probe")
+            target.pin_names("or5_probe")
     finally:
-        del target.TYPE_MAP["or3_probe"]
+        del target.TYPE_MAP["or5_probe"]
 
 
 def test_valid_pins_uses_the_targets_table():

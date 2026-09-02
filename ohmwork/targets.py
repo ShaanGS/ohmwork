@@ -130,10 +130,29 @@ class LogisimTarget:
         "input_pin":  ("Pin", {}),
         "output_pin": ("Pin", {"output": "true", "facing": "west"}),
         "not":        ("NOT Gate", {}),
+        # Gate families measured 2026-09-02 with Evolution as the instrument
+        # (logisim_symbols.GATE_INPUT_X). 2, 3, 4 and 8 inputs: what a
+        # NAND-only adder, a 4:1 mux (AND3) or an 8:1 mux (AND4 + OR8) need.
+        # XOR/XNOR stay 2-input; Evolution's multi-input XOR semantics are
+        # not what a textbook means and are not modelled here.
         "and2":       ("AND Gate", {"inputs": "2"}),
+        "and3":       ("AND Gate", {"inputs": "3"}),
+        "and4":       ("AND Gate", {"inputs": "4"}),
+        "and8":       ("AND Gate", {"inputs": "8"}),
         "or2":        ("OR Gate", {"inputs": "2"}),
-        "xor2":       ("XOR Gate", {"inputs": "2"}),
+        "or3":        ("OR Gate", {"inputs": "3"}),
         "or4":        ("OR Gate", {"inputs": "4"}),
+        "or8":        ("OR Gate", {"inputs": "8"}),
+        "nand2":      ("NAND Gate", {"inputs": "2"}),
+        "nand3":      ("NAND Gate", {"inputs": "3"}),
+        "nand4":      ("NAND Gate", {"inputs": "4"}),
+        "nand8":      ("NAND Gate", {"inputs": "8"}),
+        "nor2":       ("NOR Gate", {"inputs": "2"}),
+        "nor3":       ("NOR Gate", {"inputs": "3"}),
+        "nor4":       ("NOR Gate", {"inputs": "4"}),
+        "nor8":       ("NOR Gate", {"inputs": "8"}),
+        "xor2":       ("XOR Gate", {"inputs": "2"}),
+        "xnor2":      ("XNOR Gate", {"inputs": "2"}),
 
         # Logisim Evolution parts, measured 2026-08-26. NOT primitives: they
         # come from #TTL and #I/O, so a question declaring primitives_only
@@ -242,13 +261,14 @@ class LogisimTarget:
     def check_constraints(self, circuit, constraints):
         """`primitives_only`: no component from outside PRIMITIVE_LIBS.
 
-        Checked rather than assumed. Today it cannot fail — TYPE_MAP contains
-        only Pin and gates, so there is no way to ASK for the Plexers Priority
-        Encoder that answers Q2 in one drop and defeats the exercise. That is
-        exactly why it is worth writing down: the day a Plexers type is added
-        to TYPE_MAP, this check is what stops it slipping past a question that
-        declared the constraint, instead of the constraint silently becoming
-        decorative.
+        Checked rather than assumed. Since 2026-08-26 it CAN fail: TYPE_MAP
+        holds the 7447 (#TTL) and the seven-segment display (#I/O), so a
+        primitives_only question that names one is refused here. It was
+        written before either existed, when TYPE_MAP held only Pin and gates
+        and there was no way to ASK for the Plexers Priority Encoder that
+        answers Q2 in one drop -- written down then so that the day a
+        non-primitive type arrived, this is what would stop it slipping past a
+        question that declared the constraint.
         """
         if not constraints.get("primitives_only"):
             return []

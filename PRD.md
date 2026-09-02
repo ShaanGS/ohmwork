@@ -30,11 +30,14 @@ installed because the lab requires it.
 That audience is narrow on purpose and it decides several things:
 
 - **Windows first.** The lab runs Windows and LTspice is installed there.
-  macOS is supported for the digital half; see §7 for why analog on macOS is
-  not claimed.
+  macOS is buildable from source for the digital half only, and no macOS
+  installer exists yet (it needs a Mac to build on); see §7 for why analog on
+  macOS is not claimed.
 - **The four experiments we have real questions for are the acceptance set.**
   Exp 2 (series regulator), Exp 3 (regulated supply), Exp 8 (priority
-  encoder), Exp 9 (BCD to seven-segment). All four are solved today.
+  encoder), Exp 9 (BCD to seven-segment). All four solve today through the
+  packaged app; three are published in `library/` (Exp 9's solve has not been
+  published there yet).
 - **Unsigned builds are not good enough.** Asking twenty classmates to click
   through a SmartScreen warning is asking them to learn a bad habit.
 

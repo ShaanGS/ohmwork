@@ -632,7 +632,11 @@ def test_status_reports_an_internal_only_digital_evaluator(monkeypatch):
     login(client)
     body = client.get("/api/status").json()
 
-    assert body["digital"]["verification"] == "internal"
+    # No fallback evaluator exists (InternalLogicBackend raises on first
+    # use), so the honest status is "not available", never "internal".
+    assert body["digital"]["available"] is False
+    assert body["digital"]["verification"] is None
+    assert "refused" in body["digital"]["detail"]
     assert "NOT found" in body["digital"]["detail"]
 
 
@@ -753,3 +757,40 @@ def test_desktop_can_bind_the_backend_to_loopback(monkeypatch):
     assert server.main() == 0
     assert called["host"] == "127.0.0.1"
     assert called["port"] == 47123
+
+
+# ---------------------------------------------- login hardening (2026-09-02)
+#
+# Found in the pre-launch review: the one unauthenticated route that reads a
+# body read it unbounded and 500'd on anything that was not a JSON object,
+# and the failed-login bucket never expired -- behind a reverse proxy every
+# client is one host, so ten wrong guesses from one person locked everyone
+# out until the process restarted.
+
+def test_a_login_body_that_is_not_a_json_object_is_a_400_not_a_traceback():
+    client = make_client()
+    assert client.post("/api/login", content=b"not json",
+                       headers={"Content-Type": "application/json"}).status_code == 400
+    assert client.post("/api/login", content=b"[1, 2, 3]",
+                       headers={"Content-Type": "application/json"}).status_code == 400
+
+
+def test_an_oversized_login_body_is_refused_before_it_is_read():
+    from ohmwork.server import MAX_LOGIN_BODY
+    client = make_client()
+    huge = b'{"password": "' + b"x" * (MAX_LOGIN_BODY * 4) + b'"}'
+    assert client.post("/api/login", content=huge,
+                       headers={"Content-Type": "application/json"}).status_code == 413
+
+
+def test_the_failed_login_bucket_expires(monkeypatch):
+    import time as _time
+    from ohmwork import server as server_module
+    client = make_client(max_login_attempts=2)
+    now = [1_000_000.0]
+    monkeypatch.setattr(server_module.time, "time", lambda: now[0])
+    assert login(client, "wrong").status_code == 401
+    assert login(client, "wrong").status_code == 401
+    assert login(client, PASSWORD).status_code == 429     # locked, in window
+    now[0] += server_module.LOGIN_WINDOW_SECONDS + 1
+    assert login(client, PASSWORD).status_code == 200     # window passed

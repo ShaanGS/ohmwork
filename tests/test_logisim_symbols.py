@@ -38,7 +38,11 @@ def test_module_table_matches_the_independent_measurements():
     # the half that stops the check going quiet: without it, adding a new
     # component with invented offsets would pass, because the equality above
     # only sees the keys the old fixtures happen to contain.
+    from ohmwork.logisim_symbols import GATE_INPUT_COUNTS
     ELSEWHERE = {
+        **{(name, n): "tests/test_logisim_gates.py — a Pin placed exactly on "
+                      "each port with no wire, evaluated by Evolution 4.1.0"
+           for name, counts in GATE_INPUT_COUNTS.items() for n in counts},
         ("7447", None): "tests/test_logisim_ttl.py — Evolution evaluates a "
                         "circuit built from these offsets and decodes BCD",
         ("7-Segment Display", None): "tests/test_logisim_ttl.py — dead ends in "
@@ -56,28 +60,31 @@ def test_module_table_matches_the_independent_measurements():
 # ------------------------------------------------- refusing to guess
 
 def test_unmeasured_input_count_raises():
-    # 3-input AND appears in no real file we have. Interpolating between the
-    # 2-input and 4-input layouts would be inventing geometry.
+    # 5-input AND was probed only through wires, which cannot separate x
+    # candidates 10 apart, so it is not in the table. Interpolating from the
+    # measured counts would be inventing geometry.
     with pytest.raises(UnmeasuredGeometryError) as excinfo:
-        ports_of("AND Gate", {"inputs": "3"})
+        ports_of("AND Gate", {"inputs": "5"})
     message = str(excinfo.value)
-    assert "AND Gate" in message and "'3'" in message
-    assert "['2']" in message           # names what HAS been measured
+    assert "AND Gate" in message and "'5'" in message
+    assert "['2', '3', '4', '8']" in message   # names what HAS been measured
     assert "real" in message and "required" in message
 
 
 def test_measured_input_counts_still_work():
     assert len(ports_of("AND Gate", {"inputs": "2"})) == 3
     assert len(ports_of("OR Gate", {"inputs": "4"})) == 5
-    # ...and 4-input AND is not measured even though 4-input OR is
+    assert len(ports_of("NAND Gate", {"inputs": "8"})) == 9
+    # ...and a 3-input XOR is not placed even though 3-input AND is: its
+    # semantics in Evolution are not the textbook's.
     with pytest.raises(UnmeasuredGeometryError):
-        ports_of("AND Gate", {"inputs": "4"})
+        ports_of("XOR Gate", {"inputs": "3"})
 
 
 def test_unknown_component_raises():
     with pytest.raises(UnmeasuredGeometryError) as excinfo:
-        ports_of("NAND Gate", {"inputs": "2"})
-    assert "NAND Gate" in str(excinfo.value)
+        ports_of("Buffer", {})
+    assert "Buffer" in str(excinfo.value)
 
 
 def test_non_default_size_or_facing_raises():

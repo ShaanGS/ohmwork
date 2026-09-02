@@ -44,9 +44,13 @@ it."*
 
 That rule is about WHERE the call happens, not which vendor makes it. This
 module is only ever driven by the CLI, on a machine where the simulators
-live, with a human at the dry-run gate. Nothing here may be reachable from a
-served page — the site is a static viewer over the library and never calls a
-model. If a request path ever imports this module, that rule has been broken.
+Where this module may be called from is a RULE, rewritten once: it used to
+forbid any request path importing it, on the premise that a server could
+never simulate. server.py imports it deliberately, because for digital
+questions the server DOES simulate (Logisim runs on Linux), and the rule
+now reads: no response may carry a circuit or a number the evaluator did
+not confirm, and every response names the evaluator. See server.py's
+module docstring for the wording and ARCHITECTURE.md for why it changed.
 
 MODEL IDS ARE NOT STABLE, SO THEY ARE NOT GUESSED
 --------------------------------------------------
