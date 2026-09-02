@@ -745,13 +745,17 @@ def _ask_until_it_fits(provider, prompt, budget, parse, what):
     """
     malformed_left = 2
     transient_left = 2
-    #: One shot at fixing a VALIDATION failure. Measured on the live repro
+    #: Two shots at fixing a VALIDATION failure. Measured on the live repro
     #: of issue #1: the model named inputs A..D and outputs a..d, the spec
     #: gate refused (correctly -- Logisim renames case-insensitive clashes
     #: silently), and the whole run died on a naming choice one line of
-    #: feedback fixes. One, not more: a model that ignores the feedback
-    #: once is not going to honour it on the fourth telling.
-    feedback_left = 1
+    #: feedback fixes. Raised from one to two on 2026-09-02: the intent gate
+    #: grew several rules the same day (stated amplitudes, one node per
+    #: part, AC-fed DC levels) and a live clamper run died after fixing the
+    #: first objection and tripping the second. The reading is the cheapest
+    #: call in the loop; two rounds is still bounded, and a model that
+    #: ignores feedback twice is not going to honour it on the fifth telling.
+    feedback_left = 2
     asked = prompt
     while True:
         try:

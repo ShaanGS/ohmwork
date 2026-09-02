@@ -370,8 +370,8 @@ def test_a_rejected_spec_is_fed_back_once_and_the_fix_accepted(tmp_path):
     """Measured on the live repro of issue #1: the model named inputs A..D
     and outputs a..d -- refused case-insensitively, correctly -- and the
     whole run died on a naming choice one line of feedback would fix. A
-    spec validation failure now goes back to the model ONCE, with the
-    error; a second bad spec still ends the run."""
+    spec validation failure goes back to the model with the error -- twice,
+    since 2026-09-02 -- and a spec still bad after that ends the run."""
     import json as _json
     bad = _json.loads(SPEC_JSON)
     bad["outputs"] = [o.lower() for o in bad["inputs"]]
@@ -386,7 +386,7 @@ def test_a_rejected_spec_is_fed_back_once_and_the_fix_accepted(tmp_path):
     assert "REJECTED" in retry_prompt
     assert "case-insensitively" in retry_prompt
 
-    always_bad = FakeProvider([_json.dumps(bad)] * 3)
+    always_bad = FakeProvider([_json.dumps(bad)] * 4)
     with pytest.raises(DesignError, match="case-insensitively"):
         solve(QUESTION, provider=always_bad,
               backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
