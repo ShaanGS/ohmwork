@@ -60,6 +60,7 @@ from fastapi import Cookie, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from ohmwork.domain import DomainError, check_analog, check_digital, classify
+from ohmwork.intent import STATISTIC
 from ohmwork.llm import PoolExhausted
 
 #: Where to get the analog evaluator. Named in the refusal when it is absent,
@@ -470,6 +471,9 @@ def _backfill(solution, seen: set, progress) -> None:
         spec = solution.spec
         progress("reading", {"spec": solution.basis.reading,
                              "basis": solution.basis.kind,
+                             "expressions": (dict(spec.expressions)
+                                             if solution.basis.kind != "part"
+                                             else {}),
                              "inputs": list(spec.inputs),
                              "outputs": list(spec.outputs),
                              "notes": list(getattr(spec, "notes", ()) or ())})
@@ -484,11 +488,10 @@ def _backfill_analog(solution, seen: set, progress) -> None:
     if "reading" not in seen:
         intent = solution.intent
         progress("reading", {"intent": intent.render(),
-                             "topology": intent.topology,
                              "checkable": intent.checkable,
                              "observations": (len(intent.targets)
                                               - intent.checkable),
-                             "notes": list(intent.notes)})
+                             **intent.reading_data()})
     if "attempt" not in seen:
         for index, failure in solution.failed_attempts:
             progress("attempt", {"index": index, "status": "rejected",
@@ -520,7 +523,14 @@ def _measured_payload(solution, downloads: dict) -> dict:
                                verification) or verification
         break
 
-    units = {target.name: {"quantity": target.quantity, "unit": target.unit}
+    # `statistic` is the code's own account of WHICH number a target's value
+    # is (the mean of a waveform, its RMS, its ripple), published so a page
+    # can say so beside the figure instead of leaving a reader to guess why
+    # an "input waveform" reads as a few microvolts. Incident 5's number, in
+    # the payload contract rather than matched after the fact.
+    units = {target.name: {"quantity": target.quantity, "unit": target.unit,
+                           "kind": target.kind,
+                           "statistic": STATISTIC.get(target.kind)}
              for target in solution.intent.targets}
     if cmp.checked:
         headline = (f"meets the intent after {solution.attempts} design "
@@ -541,6 +551,8 @@ def _measured_payload(solution, downloads: dict) -> dict:
             {"name": outcome.name,
              "quantity": units.get(outcome.name, {}).get("quantity", ""),
              "unit": units.get(outcome.name, {}).get("unit", ""),
+             "kind": units.get(outcome.name, {}).get("kind", ""),
+             "statistic": units.get(outcome.name, {}).get("statistic"),
              "wanted": outcome.wanted,
              "measured": outcome.measured,
              "ok": outcome.ok,

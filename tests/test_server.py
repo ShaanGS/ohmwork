@@ -258,9 +258,14 @@ def test_the_reading_is_streamed_BEFORE_any_answer():
     detail tucked under the result, it comes first."""
     client = make_client()
     login(client)
-    names = [name for name, _ in events(solve(client))]
+    stream = events(solve(client))
+    names = [name for name, _ in stream]
 
     assert names.index("reading") < names.index("verified")
+    # And it carries the expressions as DATA beside the rendered text, so a
+    # page can wrap one expression per line instead of scrolling sideways.
+    reading = dict(stream)["reading"]
+    assert set(reading["expressions"]) == set(reading["outputs"])
 
 
 def test_every_rejected_attempt_is_reported_not_hidden():
@@ -483,6 +488,12 @@ def test_an_analog_reading_and_attempts_are_backfilled_too():
     assert names.index("reading") < names.index("measured")
     reading = dict(stream)["reading"]
     assert "series voltage regulator" in reading["intent"]
+    # The same reading as data, for a page that lays it out rather than
+    # printing the monospace block: every target names WHAT it is measured
+    # on and whether a number could fail.
+    assert reading["topology"]
+    assert {"name", "quantity", "where", "wanted", "checked"} <= set(
+        reading["targets"][0])
     attempts = [data for name, data in stream if name == "attempt"]
     assert attempts and "7.1 V" in attempts[0]["failure"]
 

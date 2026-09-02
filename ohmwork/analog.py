@@ -476,10 +476,9 @@ def solve_analog(question: str, *, provider=None, backend=None, workdir,
         INTENT_MAX_TOKENS, _parse_intent, "the design intent")
 
     emit("reading", {"intent": intent.render(),
-                     "topology": intent.topology,
                      "checkable": intent.checkable,
                      "observations": len(intent.targets) - intent.checkable,
-                     "notes": list(intent.notes)})
+                     **intent.reading_data()})
 
     types = component_vocabulary()
     nets = ", ".join(sorted({target.net for target in intent.targets
@@ -521,6 +520,9 @@ def solve_analog(question: str, *, provider=None, backend=None, workdir,
                           "because it was not valid JSON. Reply with exactly "
                           "one valid JSON object and nothing else.")
             continue
+        except PoolExhausted:
+            # Nobody left to ask: its own outcome, never a failed design.
+            raise
         except LLMError as exc:
             # A provider failure is not a design failure, and must not be fed
             # back to the model as though its circuit were wrong.

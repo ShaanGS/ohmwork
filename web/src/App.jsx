@@ -129,6 +129,82 @@ function Mono({ children, className = '' }) {
   return <code className={`font-mono text-[12px] text-ink ${className}`}>{children}</code>
 }
 
+/* ---------- reading helpers ----------
+ *
+ * Numbers arrive as raw floats (2.2789902837896077) and boolean expressions
+ * as one unbroken line. Both are TRUE and both are unreadable, so the page
+ * formats them for a person -- without ever changing what they say. A value
+ * is rounded to four significant figures with an SI prefix; an expression
+ * gets a space around each operator so it can wrap. Nothing here computes
+ * a new fact: every number still comes from the payload as measured.
+ */
+
+const SI = [[1e9, 'G'], [1e6, 'M'], [1e3, 'k'], [1, ''], [1e-3, 'm'], [1e-6, 'µ'], [1e-9, 'n'], [1e-12, 'p']]
+const SI_UNITS = new Set(['V', 'A', 'W', 'Hz', 's', 'F', 'H', 'Ω', 'ohm', 'Vpp', 'Vrms'])
+
+function sig(x, n = 4) {
+  if (x === 0) return '0'
+  return String(Number(x.toPrecision(n)))
+}
+
+function fmtValue(value, unit) {
+  if (value === null || value === undefined) return '—'
+  const v = Number(value)
+  if (!Number.isFinite(v)) return String(value)
+  const u = unit || ''
+  if (SI_UNITS.has(u) && v !== 0) {
+    const a = Math.abs(v)
+    // Below a picovolt the number is solver noise on a node that sits at
+    // zero (MEASURED: 7e-17 V on a clamper's output), and "0.00007316 pV"
+    // reads as a measurement. Say what it is.
+    if (a < 1e-12) return `≈ 0 ${u}`
+    for (const [scale, prefix] of SI) {
+      if (a >= scale * 0.9995) return `${sig(v / scale)} ${prefix}${u}`
+    }
+    return `${sig(v / 1e-12)} p${u}`
+  }
+  return u ? `${sig(v)} ${u}` : sig(v)
+}
+
+function prettyExpr(expr) {
+  return String(expr).replace(/\s*([&|^])\s*/g, ' $1 ').replace(/~\s+/g, '~').trim()
+}
+
+// The plain-English name of the statistic a target's number is, taken from
+// the payload's own `statistic` field. The page never infers this from the
+// target's name: a page that asserts a convention the code moved on from is
+// the viewer incident all over again.
+const STATISTIC_WORDS = {
+  mean: 'mean of the waveform',
+  rms: 'RMS of the waveform',
+  ripple_pp: 'peak-to-peak ripple',
+  min: 'minimum',
+  max: 'maximum',
+}
+
+function Chip({ tone = 'grey', children }) {
+  const cls = {
+    grey: 'bg-inset text-ink-2',
+    green: 'bg-green-tint text-green',
+    amber: 'bg-amber-tint text-amber',
+  }[tone]
+  return <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-mono text-[12px] ${cls}`}>{children}</span>
+}
+
+function Details({ summary, children, className = '' }) {
+  // The facts a careful reader wants and a first-time reader does not:
+  // present on the page, one click away, never lost.
+  return (
+    <details className={`group rounded-[10px] bg-page shadow-hairline ${className}`}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3.5 py-2.5 text-[12.5px] font-medium text-ink-2 select-none [&::-webkit-details-marker]:hidden">
+        {summary}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-3 transition-transform group-open:rotate-180"><path d="M6 9l6 6 6-6" /></svg>
+      </summary>
+      <div className="space-y-3 border-t border-line px-3.5 py-3">{children}</div>
+    </details>
+  )
+}
+
 /* ---------- login ---------- */
 
 function Login({ onIn }) {
@@ -561,19 +637,121 @@ function Routing({ routing }) {
 }
 
 function Reading({ reading }) {
+  // The one block on the page a person is asked to actually READ, so it is
+  // laid out rather than dumped: signals as chips, one expression per line
+  // that wraps, targets as a list with what each is measured on. The text
+  // form is kept behind a disclosure for anyone who wants it verbatim. The
+  // facts are the payload's; only the arrangement is the page's.
+  const structured = reading.expressions && Object.keys(reading.expressions).length > 0
+    ? <DigitalReading reading={reading} />
+    : reading.targets
+      ? <AnalogReading reading={reading} />
+      : <Reveal text={reading.spec || reading.intent} className="mt-4 text-ink" />
   return (
     <Surface tone="amber" className="p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Kicker tone="amber"><Dot tone="amber" /> Step 1 · check the reading</Kicker>
         <span className="text-[12px] text-amber">the one check only you can do</span>
       </div>
-      <Reveal text={reading.spec || reading.intent} className="mt-4 text-ink" />
+      <p className="mt-3 text-[15px] font-semibold text-ink">
+        {reading.basis === 'part'
+          ? 'Here is how your question was understood. The answer is checked against the real chip.'
+          : 'Here is how your question was understood.'}
+      </p>
+      {structured}
       <p className="mt-4 border-t border-amber/20 pt-3 text-[12.5px] leading-relaxed text-ink-2">
         {reading.basis === 'part'
-          ? 'Compare this against your question before trusting anything below. Your question names a part, so the answer is checked against that chip’s own measured behaviour and the wiring map printed with it, not against the words above and not against your question.'
-          : 'Compare this against your question before trusting anything below. Every check that follows proves the circuit matches THIS reading. None of them can tell whether the reading matches your question.'}
+          ? 'Your question names a part, so the answer below is checked against that chip’s own measured behaviour and the wiring map printed with it. Make sure the signal names and choices above are what you meant.'
+          : 'If this is not what you asked, stop here. Everything below proves the circuit does THIS. Nothing below can tell whether THIS is your question.'}
       </p>
     </Surface>
+  )
+}
+
+function DigitalReading({ reading }) {
+  const notes = reading.notes || []
+  return (
+    <div className="mt-3 space-y-3">
+      <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-[12.5px]">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-0.5 text-ink-3">inputs</span>
+          {(reading.inputs || []).map((name) => <Chip key={name}>{name}</Chip>)}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-0.5 text-ink-3">outputs</span>
+          {(reading.outputs || []).map((name) => <Chip key={name} tone="amber">{name}</Chip>)}
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {Object.entries(reading.expressions).map(([name, expr], i) => (
+          <div
+            key={name}
+            className="rounded-[10px] bg-page/80 px-3 py-2 font-mono text-[12.5px] leading-relaxed shadow-hairline"
+            style={{ animation: `resolve 420ms cubic-bezier(0.23,1,0.32,1) ${i * 70}ms both` }}
+          >
+            <span className="font-semibold text-ink">{name}</span>
+            <span className="text-ink-3"> = </span>
+            <span className="text-ink-2 [overflow-wrap:anywhere]">{prettyExpr(expr)}</span>
+          </div>
+        ))}
+      </div>
+      {notes.length > 0 && (
+        <ul className="space-y-1 text-[13px] leading-relaxed text-ink-2">
+          {notes.map((note) => (
+            <li key={note} className="flex gap-2"><span className="mt-[7px] size-1 shrink-0 rounded-full bg-amber" /><span>{note}</span></li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function AnalogReading({ reading }) {
+  const targets = reading.targets || []
+  const stated = reading.stated || []
+  const notes = reading.notes || []
+  return (
+    <div className="mt-3 space-y-3">
+      <p className="text-[13.5px] leading-relaxed text-ink">
+        <span className="text-ink-3">Circuit: </span>{reading.topology}
+        {reading.frequency ? <><span className="text-ink-3"> · source: </span>{fmtValue(reading.frequency, 'Hz')}</> : null}
+      </p>
+      <div className="overflow-hidden rounded-[10px] bg-page/80 shadow-hairline">
+        {targets.map((target, i) => (
+          <div
+            key={target.name}
+            className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-line/70 px-3 py-2 text-[13px] last:border-0"
+            style={{ animation: `resolve 420ms cubic-bezier(0.23,1,0.32,1) ${i * 70}ms both` }}
+          >
+            <div className="min-w-0">
+              <span className="text-ink">{target.quantity}</span>
+              <span className="ml-2 font-mono text-[11.5px] text-ink-3">{target.where}</span>
+            </div>
+            {target.checked
+              ? <span className="font-medium text-green">checked: {target.wanted}</span>
+              : <span className="text-ink-3">reported, not checked</span>}
+          </div>
+        ))}
+      </div>
+      {stated.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
+          <span className="mr-0.5 text-ink-3">stated in the question</span>
+          {stated.map((s) => (
+            <Chip key={s.what}>{s.what} = {s.value}{s.unit ? ` ${s.unit}` : ''}</Chip>
+          ))}
+        </div>
+      )}
+      {notes.length > 0 && (
+        <div>
+          <p className="text-[12px] text-ink-3">Chosen here, because the question left it open</p>
+          <ul className="mt-1 space-y-1 text-[13px] leading-relaxed text-ink-2">
+            {notes.map((note) => (
+              <li key={note} className="flex gap-2"><span className="mt-[7px] size-1 shrink-0 rounded-full bg-amber" /><span>{note}</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -631,62 +809,92 @@ function DownloadButton({ href, children }) {
   )
 }
 
-function Basis({ basis, showReading }) {
-  // WHAT it was checked against. "Verified" alone is the same badge over two
-  // different claims: algebra read from the question, or a real part's own
-  // measured behaviour. A reader who cannot tell them apart has been shown
-  // the stronger one.
+function Basis({ basis }) {
+  // WHAT it was checked against, and what it does NOT prove. "Verified" alone
+  // is the same badge over two different claims: algebra read from the
+  // question, or a real part's own measured behaviour. Rendered inside the
+  // details disclosure: present on every answer, one click from the number.
   if (!basis) return null
   return (
-    <div className="space-y-2 rounded-[10px] bg-page p-3.5 shadow-hairline">
+    <div className="space-y-2">
       <p className="font-mono text-[10.5px] tracking-[0.08em] text-ink-3 uppercase">Checked against</p>
       <p className="text-[13px] leading-relaxed text-ink">{basis.headline}</p>
-      {showReading && basis.kind === 'part' && (
-        <pre className="overflow-x-auto font-mono text-[12.5px] leading-relaxed text-ink-2">{basis.reading}</pre>
-      )}
-      <p className="text-[12.5px] leading-relaxed text-amber">Not established by any check here: {basis.limit}</p>
+      <p className="font-mono text-[10.5px] tracking-[0.08em] text-ink-3 uppercase">Not proven by any check here</p>
+      <p className="text-[13px] leading-relaxed text-amber">{basis.limit}</p>
     </div>
+  )
+}
+
+function WiringMap({ basis }) {
+  // For a part question this IS the thing a person must check: which of the
+  // question's signals landed on which pin of the real chip. It stays in
+  // plain view, never behind a disclosure.
+  if (!basis || basis.kind !== 'part' || !basis.reading) return null
+  return (
+    <div className="rounded-[10px] bg-amber-tint/60 p-3.5">
+      <p className="font-mono text-[10.5px] tracking-[0.08em] text-amber uppercase">Wiring map · check this against your question</p>
+      <pre className="mt-2 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] text-ink-2">{basis.reading}</pre>
+    </div>
+  )
+}
+
+function Meta({ items }) {
+  // One quiet line of provenance: who checked it, how, who designed it.
+  return (
+    <p className="text-[12px] leading-relaxed text-ink-3">
+      {items.filter(Boolean).map((item, i) => (
+        <span key={i}>{i > 0 && <span className="mx-1.5">·</span>}{item}</span>
+      ))}
+    </p>
   )
 }
 
 function Verified({ verified }) {
   const external = verified.verification === 'external'
+  const rows = verified.rows.length
   return (
     <Surface tone="green" className="space-y-4 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
           <span
-            className="flex size-7 items-center justify-center rounded-full bg-green text-white"
+            className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-green text-white"
             style={{ animation: 'stamp 500ms cubic-bezier(0.2,0.9,0.3,1.4) both' }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
           </span>
           <div>
-            <p className="text-[15px] font-semibold text-ink">
-              Verified in {verified.attempts} attempt{verified.attempts === 1 ? '' : 's'}
+            <p className="text-[16px] font-semibold text-ink">
+              Verified: all {rows} rows match
             </p>
-            <p className="text-[12.5px] text-ink-3">by {verified.evaluator}</p>
+            <p className="mt-0.5 text-[13px] text-ink-2">
+              {external
+                ? <>{verified.evaluator} evaluated the file below and every row agreed with the reading. </>
+                : <>Computed by Ohmwork’s own evaluator, not an outside tool, so this is a weaker claim. </>}
+              {verified.attempts > 1 && <>{verified.attempts - 1} earlier design{verified.attempts === 2 ? ' was' : 's were'} rejected first.</>}
+            </p>
           </div>
         </div>
         <DownloadButton href={`/api/circuit/${verified.download}`}>Download .circ</DownloadButton>
       </div>
 
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
-        <Fact label="verification">
-          {external ? 'external. An outside tool computed this.' : 'INTERNAL. Our own evaluator, unchecked by anything else.'}
-        </Fact>
-        <Fact label="agreement">{verified.summary.split('\n')[0]}</Fact>
-        <Fact label="designed by">{verified.designed_by}</Fact>
-      </dl>
-
-      <Basis basis={verified.basis} showReading />
+      <WiringMap basis={verified.basis} />
 
       <BitTable columns={verified.columns} rows={verified.rows} inputs={verified.input_count} />
 
-      <p className="text-[12.5px] leading-relaxed text-ink-3">
-        The layout inside the file is generated mechanically: inputs in a left
-        column, gates in columns by logic depth. Correct, not pretty.
-      </p>
+      <Meta items={[
+        `checked by ${verified.evaluator}`,
+        external ? 'an outside tool' : 'INTERNAL evaluator',
+        `designed by ${verified.designed_by}`,
+      ]} />
+
+      <Details summary="What this proves, and what it does not">
+        <Basis basis={verified.basis} />
+        <p className="text-[12.5px] leading-relaxed text-ink-3">
+          The layout inside the file is generated mechanically: inputs in a
+          left column, gates in columns by logic depth. Correct, not pretty.
+          Open it in Logisim and it will evaluate exactly as the table above.
+        </p>
+      </Details>
     </Surface>
   )
 }
@@ -699,50 +907,58 @@ function Measured({ measured }) {
   // says nothing numeric was checked instead of reading as a pass.
   const external = measured.verification === 'external'
   const nothingChecked = !measured.checked
-  const tone = nothingChecked ? 'amber' : 'green'
+  const allOk = measured.outcomes.every((o) => !o.checked || o.ok)
+  const failed = measured.regimes_failed.length > 0
+  const tone = nothingChecked || failed || !allOk ? 'amber' : 'green'
+  const headline = nothingChecked
+    ? 'Simulated. No number could be checked.'
+    : `Meets the question’s figures: ${measured.checked} of ${measured.checked} checked`
+  const sub = nothingChecked
+    ? `The question stated no figure to hit, so ${measured.evaluator} ran the circuit and reported these values. None of them could pass or fail.`
+    : `${measured.evaluator} ran the circuit and every figure the question stated came out inside tolerance.`
+  const showWanted = measured.outcomes.some((o) => o.checked)
   return (
     <Surface tone={tone} className="space-y-4 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <Kicker tone={tone}><Dot tone={tone} /> Measured</Kicker>
-          <p className="text-[15px] font-semibold text-ink">{measured.headline}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5">
+            <Kicker tone={tone}><Dot tone={tone} /> Measured</Kicker>
+          </div>
+          <p className="mt-2 text-[16px] font-semibold text-ink">{headline}</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-ink-2">
+            {sub}
+            {measured.attempts > 1 && <> {measured.attempts - 1} earlier design{measured.attempts === 2 ? ' was' : 's were'} rejected first.</>}
+          </p>
         </div>
         <DownloadButton href={`/api/circuit/${measured.download}`}>Download .asc</DownloadButton>
       </div>
-
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
-        <Fact label="measured by">{measured.evaluator}</Fact>
-        <Fact label="verification">
-          {external ? 'external. An outside simulator computed every number.' : 'INTERNAL. Our own evaluator, unchecked by anything else.'}
-        </Fact>
-        <Fact label="checked / reported">
-          {measured.checked} target{measured.checked === 1 ? '' : 's'} with a stated figure · {measured.observations} reported only
-        </Fact>
-        <Fact label="regimes">
-          {measured.regimes_held} held{measured.regimes_failed.length ? ` · ${measured.regimes_failed.length} FAILED` : ''}
-        </Fact>
-        <Fact label="designed by">{measured.designed_by}</Fact>
-      </dl>
 
       <div className="overflow-x-auto rounded-[10px] shadow-hairline">
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="font-mono text-[11px] text-ink-3">
               <th className="border-b border-line px-3 py-1.5 text-left font-medium">quantity</th>
-              <th className="border-b border-line px-3 py-1.5 text-left font-medium">asked for</th>
               <th className="border-b border-line px-3 py-1.5 text-right font-medium">measured</th>
-              <th className="border-b border-line px-3 py-1.5 text-left font-medium">status</th>
+              {showWanted && <th className="border-b border-line px-3 py-1.5 text-left font-medium">target</th>}
+              <th className="border-b border-line px-3 py-1.5 text-left font-medium">result</th>
             </tr>
           </thead>
           <tbody>
             {measured.outcomes.map((outcome, i) => (
               <tr key={outcome.name} style={{ animation: `fade-in 300ms ease-out ${i * 60}ms both` }}>
-                <td className="border-b border-line/60 px-3 py-1.5 text-ink">{outcome.quantity || outcome.name}</td>
-                <td className="border-b border-line/60 px-3 py-1.5 text-ink-2">{outcome.wanted}</td>
-                <td className="border-b border-line/60 px-3 py-1.5 text-right font-mono text-[12.5px] text-ink tabular-nums">
-                  {outcome.measured === null || outcome.measured === undefined ? '—' : `${outcome.measured} ${outcome.unit}`}
+                <td className="border-b border-line/60 px-3 py-2 text-ink">
+                  {outcome.quantity || outcome.name}
+                  {outcome.statistic && STATISTIC_WORDS[outcome.statistic] && (
+                    <span className="block text-[11.5px] text-ink-3">{STATISTIC_WORDS[outcome.statistic]}</span>
+                  )}
                 </td>
-                <td className="border-b border-line/60 px-3 py-1.5">
+                <td className="border-b border-line/60 px-3 py-2 text-right font-mono text-[13px] font-medium text-ink tabular-nums whitespace-nowrap">
+                  {fmtValue(outcome.measured, outcome.unit)}
+                </td>
+                {showWanted && (
+                  <td className="border-b border-line/60 px-3 py-2 text-ink-2">{outcome.checked ? outcome.wanted : '—'}</td>
+                )}
+                <td className="border-b border-line/60 px-3 py-2 whitespace-nowrap">
                   {!outcome.checked
                     ? <span className="text-ink-3">reported only</span>
                     : outcome.ok
@@ -755,7 +971,7 @@ function Measured({ measured }) {
         </table>
       </div>
 
-      {measured.regimes_failed.length > 0 && (
+      {failed && (
         <p className="text-[12.5px] leading-relaxed text-red">
           Regime assertions that FAILED, so the numbers above touching those runs are not reliable: {measured.regimes_failed.join('; ')}
         </p>
@@ -764,9 +980,21 @@ function Measured({ measured }) {
         <p className="text-[12.5px] leading-relaxed text-amber">{measured.warnings.join(' · ')}</p>
       )}
 
-      <Basis basis={measured.basis} />
+      <p className="text-[12.5px] leading-relaxed text-amber">
+        Not proven: that this is a <em>good</em> design, or that the reading above is what your question meant.
+      </p>
 
-      <p className="text-[12.5px] leading-relaxed text-ink-3">{measured.file_note}</p>
+      <Meta items={[
+        `measured by ${measured.evaluator}`,
+        external ? 'an outside simulator' : 'INTERNAL evaluator',
+        `${measured.regimes_held} regime check${measured.regimes_held === 1 ? '' : 's'} held`,
+        `designed by ${measured.designed_by}`,
+      ]} />
+
+      <Details summary="What this proves, what it does not, and what the file is">
+        <Basis basis={measured.basis} />
+        <p className="text-[12.5px] leading-relaxed text-ink-3">{measured.file_note}</p>
+      </Details>
     </Surface>
   )
 }
@@ -839,6 +1067,15 @@ function Failed({ error }) {
       </Surface>
     )
   }
+  // A provider that could not be reached is "nobody to ask", the same fact
+  // the Unavailable card renders. The server now raises it as its own event;
+  // this branch catches the wording in case an older backend still wraps it,
+  // because the red card's evaluator boilerplate over a rate limit told the
+  // owner their circuit failed when nothing was ever asked.
+  if (/could not be reached/.test(error.message)) {
+    const members = [...error.message.matchAll(/^\s+(\w+):\s+(.+)$/gm)].map((m) => [m[1], m[2]])
+    return <Unavailable info={{ message: error.message, members }} />
+  }
   // A failure at the READING stage is a different fact from a failed
   // circuit: no circuit was ever designed, and the evaluator was never
   // asked. The owner hit this live with the evaluator boilerplate under
@@ -852,7 +1089,7 @@ function Failed({ error }) {
           <Kicker tone="amber"><Dot tone="amber" /> Reading failed</Kicker>
           <p className="text-[15px] font-semibold text-ink">The question could not be read into a checkable form</p>
         </div>
-        <pre className="overflow-x-auto rounded-[10px] bg-page p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-ink-2 shadow-hairline">{error.message}</pre>
+        <pre className="rounded-[10px] bg-page p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] text-ink-2 shadow-hairline">{error.message}</pre>
         <p className="text-[12.5px] leading-relaxed text-ink-3">
           No circuit was designed and the evaluator was never asked. This failed at the reading step. Asking again often works, since models vary run to run. Rephrasing helps when it does not.
         </p>
@@ -865,7 +1102,7 @@ function Failed({ error }) {
         <Kicker tone="red"><Dot tone="red" /> Failed</Kicker>
         <p className="text-[15px] font-semibold text-ink">No verified circuit</p>
       </div>
-      <pre className="overflow-x-auto rounded-[10px] bg-page p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-ink-2 shadow-hairline">{error.message}</pre>
+      <pre className="rounded-[10px] bg-page p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] text-ink-2 shadow-hairline">{error.message}</pre>
       <p className="text-[12.5px] leading-relaxed text-ink-3">
         Nothing is returned when the evaluator disagrees. A circuit that failed its own specification is worse than no circuit, because it looks like an answer.
       </p>

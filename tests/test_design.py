@@ -432,17 +432,42 @@ def test_a_lone_provider_waits_out_a_short_rate_limit(tmp_path):
     assert not solution.failed_attempts
 
 
-def test_a_rate_limit_too_long_to_wait_out_still_surfaces(tmp_path):
+def test_a_rate_limit_too_long_to_wait_out_is_NOBODY_TO_ASK_not_a_failed_design(tmp_path):
     """A retry_after in the thousands is a quota story: sleeping through
-    it silently would look like a hang. Tell the human instead."""
-    from ohmwork.llm import RateLimited
+    it silently would look like a hang. Tell the human instead -- and tell
+    them the RIGHT thing. MEASURED 2026-09-02 on the owner's screen: a lone
+    rate-limited provider surfaced as DesignError, which the page rendered
+    as "No verified circuit" in red with "nothing is returned when the
+    evaluator disagrees" beneath it. The evaluator was never asked. It is
+    PoolExhausted -- the same fact the pool reports -- and names the member."""
+    from ohmwork.llm import PoolExhausted, RateLimited
 
     provider = FlubbingProvider(
         [SPEC_JSON, RateLimited("come back later", retry_after=2400.0)])
-    with pytest.raises(DesignError, match="could not be reached"):
+    with pytest.raises(PoolExhausted) as caught:
         solve(QUESTION, provider=provider,
               backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
               workdir=tmp_path)
+    assert dict(caught.value.members)  # names the member and the reason
+    assert "come back later" in str(caught.value)
+
+
+def test_a_pool_running_dry_MID_DESIGN_escapes_as_itself(tmp_path):
+    """The design loop's own `except LLMError` used to catch PoolExhausted
+    (a subclass) and re-wrap it as DesignError, so the server showed a red
+    failed-design card for a provider outage that happened after the spec
+    call. Pinned: the pool's verdict must reach the caller untouched."""
+    from ohmwork.llm import PoolExhausted
+
+    provider = FlubbingProvider(
+        [SPEC_JSON, PoolExhausted("none of the 1 model provider(s) could "
+                                  "answer right now.",
+                                  members=[("groq", "busy")])])
+    with pytest.raises(PoolExhausted) as caught:
+        solve(QUESTION, provider=provider,
+              backend=FakeBackend(parse_spec_reply(SPEC_JSON)),
+              workdir=tmp_path)
+    assert dict(caught.value.members) == {"groq": "busy"}
 
 
 def test_an_unreachable_network_on_the_SPEC_call_gives_up_bounded(tmp_path):

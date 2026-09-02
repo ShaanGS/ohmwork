@@ -6,7 +6,7 @@
 export default function Reveal({ text, className = '', perLine = 70 }) {
   const lines = String(text ?? '').split('\n')
   return (
-    <pre className={`overflow-x-auto font-mono text-[13px] leading-relaxed ${className}`}>
+    <pre className={`font-mono text-[13px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${className}`}>
       {lines.map((line, i) => (
         <span
           key={i}

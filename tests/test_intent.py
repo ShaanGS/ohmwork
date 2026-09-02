@@ -564,3 +564,24 @@ def test_the_reading_says_WHAT_each_target_is_measured_on():
     assert "V(vout)" in reading
     assert "the zener's current" in reading
     assert "12 V to 20 V input" in reading
+
+
+def test_the_reading_is_also_published_as_DATA_a_page_can_lay_out():
+    """`reading_data` carries the same facts `render` prints -- topology,
+    every target with what it is measured ON and what was asked FOR, the
+    stated values, the choices -- so a page can arrange them instead of
+    printing a monospace block a phone cannot show. MEASURED 2026-09-02: the
+    owner's screenshot of the reading was a horizontally scrolling block
+    whose right half was off screen."""
+    intent = parse_intent_reply(REGULATOR)
+    data = intent.reading_data()
+    text = intent.render()
+    assert data["topology"] == intent.topology
+    names = {t["name"] for t in data["targets"]}
+    assert names == {t.name for t in intent.targets}
+    for target in data["targets"]:
+        assert target["where"] in text
+        assert target["wanted"] in text
+        assert isinstance(target["checked"], bool)
+    assert any(t["checked"] for t in data["targets"])
+    assert data["notes"] == list(intent.notes)

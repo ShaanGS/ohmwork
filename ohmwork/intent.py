@@ -241,6 +241,28 @@ class Intent:
         """
         return sum(0 if t.is_observation else 1 for t in self.targets)
 
+    def reading_data(self) -> dict:
+        """The reading as DATA: the same facts `render` prints, for a page
+        that lays them out instead of printing a monospace block.
+
+        Each target carries what it is measured ON (`where`) beside what was
+        asked FOR (`wanted`), for the reason `Target.where` records: a
+        current reported as a voltage is only visible to a reader who can
+        see the expression.
+        """
+        return {
+            "topology": self.topology,
+            "frequency": self.frequency,
+            "targets": [{"name": t.name, "quantity": t.quantity,
+                         "unit": t.unit, "where": t.where(),
+                         "wanted": t.wanted(),
+                         "checked": not t.is_observation}
+                        for t in self.targets],
+            "stated": [{"what": s["what"], "value": s["value"],
+                        "unit": s.get("unit", "")} for s in self.stated_values],
+            "notes": list(self.notes),
+        }
+
     def render(self) -> str:
         """The reading, shown to a human before the answer.
 

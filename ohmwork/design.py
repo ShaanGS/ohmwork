@@ -648,7 +648,18 @@ def _complete_patiently(provider, prompt, *, max_tokens):
                                      json_object=True)
         except RateLimited as exc:
             if waits <= 0 or exc.retry_after > MAX_SINGLE_WAIT:
-                raise
+                # Giving up here is the single-provider shape of "nobody
+                # could be asked": no circuit was designed and nothing about
+                # the question was wrong. Raised as PoolExhausted so every
+                # renderer shows the UNAVAILABLE outcome, not a failed design.
+                # MEASURED 2026-09-02: the owner's screenshot showed "groq:
+                # busy or rate limited" under a red "No verified circuit"
+                # with the evaluator-disagreed boilerplate beneath it.
+                name = getattr(provider, "name", "the model provider")
+                raise PoolExhausted(
+                    f"none of the 1 model provider(s) could answer right "
+                    f"now.\n  {name}: {exc}",
+                    members=[(name, str(exc))]) from exc
             waits -= 1
             time.sleep(exc.retry_after)
 
@@ -810,6 +821,12 @@ def solve(question: str, *, provider=None, backend=None, workdir,
                 f"be evaluated to serve as the reference: {exc}") from exc
 
     emit("reading", {"spec": _reading(spec, part, target),
+                     # The same reading as DATA, so a page can lay it out
+                     # rather than print a monospace block a phone cannot
+                     # show. Empty for a part question, where the model's
+                     # algebra is a recollection and is NOT the reference.
+                     "expressions": (dict(spec.expressions) if part is None
+                                     else {}),
                      # Which basis is already settled here, before any design
                      # exists. A renderer needs it to caption the reading
                      # honestly: for a part question this text is NOT what the
@@ -862,6 +879,11 @@ def solve(question: str, *, provider=None, backend=None, workdir,
                           "because it was not valid JSON. Reply with exactly "
                           "one valid JSON object and nothing else.")
             continue
+        except PoolExhausted:
+            # Nobody left to ask. NOT a design failure: wrapping it below
+            # would render as "no verified circuit" over a question that was
+            # fine and a circuit that was never designed.
+            raise
         except LLMError as exc:
             # A provider failure is not a design failure. It must not be fed
             # back to the model as though its circuit were wrong.

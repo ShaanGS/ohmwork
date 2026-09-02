@@ -37,6 +37,7 @@
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
+  html, body { overflow-x: clip; }
   body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
   a { color: inherit; text-decoration: none; }
   ::selection { background: var(--lime); color: var(--ink); }
@@ -106,7 +107,7 @@
   .demo { text-align: left; margin: 56px auto 0; max-width: 960px; background: var(--card); border: 1px solid var(--line); border-radius: 22px 22px 0 0; border-bottom: 0; box-shadow: 0 -1px 0 rgba(255,255,255,.6), 0 30px 80px -30px rgba(18,20,16,0.28); overflow: hidden; cursor: pointer; }
   .demo .bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: #fafbf7; }
   .demo .bar .dots span { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #e6e8e2; }
-  .demo .bar .q { flex: 1; font-size: 13.5px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; display: flex; align-items: center; gap: 2px; min-height: 34px; transition: box-shadow .3s, border-color .3s; }
+  .demo .bar .q { flex: 1; min-width: 0; overflow: hidden; font-size: 13.5px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; display: flex; align-items: center; gap: 2px; min-height: 34px; transition: box-shadow .3s, border-color .3s; }
   .demo .bar .q.focus { border-color: rgba(111,168,12,0.5); box-shadow: 0 0 0 3px rgba(201,255,58,0.35); }
   .demo .bar .q .ph { color: var(--ink-3); }
   .demo .bar .q .ph[hidden] { display: none; }
@@ -122,7 +123,7 @@
   .demo .send.fire { animation: fire .45s ease; }
   @keyframes fire { 30% { transform: scale(0.82); background: var(--lime); color: var(--ink); } }
   .demo .body { display: grid; grid-template-columns: 1.05fr 1fr; min-height: 380px; }
-  .demo .col { padding: 22px 24px; }
+  .demo .col { padding: 22px 24px; min-width: 0; overflow-x: auto; }
   .demo .col + .col { border-left: 1px solid var(--line); }
   .demo h4 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-family: var(--mono); color: var(--ink-3); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
   .demo h4 .tag { font-family: var(--sans); text-transform: none; letter-spacing: 0; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #eef0ea; color: var(--ink-3); font-weight: 600; transition: background .3s, color .3s; }
@@ -136,7 +137,7 @@
   .dots3 i:nth-child(2) { animation-delay: .15s } .dots3 i:nth-child(3) { animation-delay: .3s }
   @keyframes bounce { 0%,60%,100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-5px); opacity: 1; } }
   .think.idle .dots3 i { animation: none; background: #d5d8cf; }
-  .log { font-family: var(--mono); font-size: 12.5px; line-height: 1.9; color: var(--ink-2); }
+  .log { font-family: var(--mono); font-size: 12.5px; line-height: 1.9; color: var(--ink-2); overflow-wrap: anywhere; }
   .log div { opacity: 0; transform: translateX(-6px); animation: login .35s forwards; }
   .log div::before { content: "[..] "; color: var(--ink-3); }
   .log .ok::before { content: "[ok] "; color: var(--lime-deep); }
@@ -298,6 +299,49 @@
     .rule { padding: 48px 22px; } .rule .grid { grid-template-columns: 1fr; gap: 24px; } .index { position: static; display: flex; overflow-x: auto; } .index a { border: 0; white-space: nowrap; padding: 8px 12px 8px 0; }
     footer .cols { grid-template-columns: 1fr; }
     section { padding: 72px 0; }
+  }
+
+  @media (max-width: 640px) {
+    nav { height: 58px; }
+    nav .logo img { width: 32px; height: 32px; }
+    nav .gh { padding: 6px 10px; font-size: 13px; }
+    nav .btn { padding: 8px 13px; font-size: 13.5px; }
+    .sky { margin-top: -58px; padding-top: 58px; }
+    .hero { padding-top: 44px; }
+    h1 { font-size: clamp(36px, 10.5vw, 46px); }
+    .sub { font-size: 16.5px; margin-top: 16px; }
+    .cta { flex-direction: column; align-items: stretch; margin-top: 24px; }
+    .cta .btn { justify-content: center; padding: 13px 20px; font-size: 15px; }
+    .fine { font-size: 12px; }
+    .demo { margin-top: 36px; border-radius: 16px 16px 0 0; }
+    .demo .bar { padding: 10px 12px; } .demo .bar .dots { display: none; }
+    .demo .col { padding: 16px; }
+    .demo .body { min-height: 0; }
+    .log { font-size: 11.5px; line-height: 1.8; }
+    table.tt { font-size: 11.5px; } .tt th, .tt td { padding: 3px 4px; }
+    .sh { margin-bottom: 30px; }
+    .sh h2 { font-size: clamp(30px, 8.6vw, 36px); }
+    .sh p { font-size: 15.5px; }
+    .how { padding: 12px; gap: 12px; border-radius: 20px; }
+    .stage { min-height: 280px; } .stage .win { padding: 16px; }
+    .step { padding: 13px 14px; } .step .t { font-size: 15px; } .step .d { font-size: 14px; }
+    .bento { grid-template-columns: 1fr; gap: 12px; }
+    .c3,.c2,.c4,.c6 { grid-column: span 1; }
+    .tile, .tile:has(.meter) { min-height: 0; padding: 20px; }
+    .tile .art { margin-top: 20px; }
+    .tile h3 { font-size: 17px; } .tile p { font-size: 14px; }
+    .tile.wide { gap: 18px; }
+    .probe { grid-template-columns: repeat(16, 1fr); width: 100%; } .probe i { width: auto; aspect-ratio: 1; height: auto; }
+    .rule { padding: 44px 18px; border-radius: 22px; }
+    .index { margin: 0 -18px; padding: 0 18px; scrollbar-width: none; } .index::-webkit-scrollbar { display: none; }
+    .panel { padding-bottom: 48px; } .panel .frame { padding: 22px 16px; min-height: 0; }
+    .panel h3 { font-size: 21px; margin-top: 20px; } .panel p { font-size: 15.5px; }
+    .vsm .c { width: 100%; }
+    .band { padding: 64px 18px; border-radius: 22px; }
+    .band h2 { font-size: clamp(30px, 8.6vw, 38px); } .band h2 br { display: none; }
+    .band p { font-size: 15.5px; }
+    footer { padding: 40px 0 18px; } footer .cols { gap: 24px; }
+    section { padding: 56px 0; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
@@ -536,7 +580,7 @@
 <section style="padding-top:0">
   <div class="wrap">
     <div class="band rv">
-      <h2>Your next open-ended question,<br>answered with proof.</h2>
+      <h2>Your next open-ended question,<br> answered with proof.</h2>
       <p>One installer, a free key, a real simulator doing the checking.</p>
       <div class="cta">
         <a class="btn btn-dark" href="https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.1.exe">Download for Windows <span class="arrow">&#8599;</span></a>
