@@ -596,10 +596,23 @@ def _resolve_role(role: str, circuit: dict) -> str:
     if how == "ref":
         if any(c.get("ref") == what for c in components):
             return what
+        # A question in parts names each part's source and load with a
+        # suffix (V1_i, V1_ii). One such component is unambiguous; several
+        # means the intent has to say which part it measures.
+        suffixed = sorted(c["ref"] for c in components
+                          if str(c.get("ref", "")).startswith(what + "_"))
+        if len(suffixed) == 1:
+            return suffixed[0]
+        if suffixed:
+            raise IntentError(
+                f"the intent measures the {role}, and this design has "
+                f"{len(suffixed)} of them ({', '.join(suffixed)}), one per "
+                f"part. A role cannot say which part it means: measure that "
+                f"quantity by net or by ref instead.")
         raise IntentError(
             f"the intent measures the {role}, which by convention is the "
-            f"component named {what!r}, and this design has no {what}. Name "
-            f"the {role} {what}.")
+            f"component named {what!r} (or {what}_<part> in a question with "
+            f"parts), and this design has no {what}. Name the {role} {what}.")
     matching = [c["ref"] for c in components if c.get("type") in what]
     if not matching:
         raise IntentError(

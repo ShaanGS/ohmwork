@@ -709,3 +709,19 @@ def test_a_current_target_needs_exactly_one_of_role_and_ref():
             parse_intent_reply(json.dumps(_dc([
                 {"name": "i", "kind": "dc_current", "quantity": "current",
                  "unit": "A", **extra}])))
+
+
+def test_a_role_resolves_to_a_single_per_part_source_and_refuses_several():
+    """A question in parts names its sources V1_i, V1_ii. One suffixed
+    source is unambiguous; two mean the role cannot say which part."""
+    from ohmwork.intent import _resolve_role
+    one = {"components": [{"ref": "V1_i", "type": "voltage"},
+                          {"ref": "RL_i", "type": "res"}]}
+    assert _resolve_role("supply", one) == "V1_i"
+    assert _resolve_role("load", one) == "RL_i"
+    two = {"components": [{"ref": "V1_i", "type": "voltage"},
+                          {"ref": "V1_ii", "type": "voltage"}]}
+    with pytest.raises(IntentError, match="one per part"):
+        _resolve_role("supply", two)
+    with pytest.raises(IntentError, match="V1_<part>"):
+        _resolve_role("supply", {"components": [{"ref": "Vs", "type": "voltage"}]})

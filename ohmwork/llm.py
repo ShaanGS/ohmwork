@@ -211,6 +211,33 @@ class Image:
 # ---------------------------------------------------------------- Groq
 
 
+#: Models whose reasoning shares the completion budget and can be dialled.
+#: gpt-oss on Groq accepts reasoning_effort low/medium/high. MEASURED
+#: 2026-09-02 on the two-circuit clamper design: at the default effort, three
+#: of six design replies came back as invalid JSON or an object with no
+#: "nets" -- the model thought its way through most of a 5000-token budget
+#: and had too little left to finish writing. The design step is a
+#: transcription of a plan into JSON, not a puzzle; "low" is the right effort
+#: for it, and the intent/spec steps stay within budget at "low" as well.
+REASONING_MODELS = ("gpt-oss",)
+DEFAULT_REASONING_EFFORT = "low"
+
+
+def reasoning_extra(model: str) -> dict:
+    """Request parameters that set a reasoning model's effort, or nothing.
+
+    Configurable with OHMWORK_REASONING_EFFORT (low / medium / high); an empty
+    value sends nothing and leaves the provider's default in place.
+    """
+    if not any(tag in (model or "") for tag in REASONING_MODELS):
+        return {}
+    effort = os.environ.get("OHMWORK_REASONING_EFFORT", DEFAULT_REASONING_EFFORT)
+    effort = (effort or "").strip().lower()
+    if effort not in ("low", "medium", "high"):
+        return {}
+    return {"reasoning_effort": effort}
+
+
 class GroqProvider:
     """Groq's hosted open models, via the official SDK.
 
@@ -263,6 +290,7 @@ class GroqProvider:
         try:
             extra = ({"response_format": {"type": "json_object"}}
                      if json_object else {})
+            extra.update(reasoning_extra(self.model))
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": content}],
@@ -744,6 +772,7 @@ class OpenAICompatibleProvider:
             # necessary when a model answered the design step with a bulleted
             # prose description of the nets.
             payload["response_format"] = {"type": "json_object"}
+        payload.update(reasoning_extra(self.model))
         status, headers, text = self.transport(
             "POST", f"{self.base_url}/chat/completions", self._headers(),
             json.dumps(payload).encode("utf-8"))

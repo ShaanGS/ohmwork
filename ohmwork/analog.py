@@ -128,7 +128,10 @@ RULES:
    ground -- so a target on the SOURCE's own voltage (its RMS, its
    waveform) MUST be measured between its two nodes, "net" AND "net2".
    Measured one node to ground it reads a different, smaller number, and a
-   CORRECT circuit fails the check.
+   CORRECT circuit fails the check. A source with one end on GROUND (a
+   clipper's, a clamper's, an amplifier's input) is measured with "net"
+   alone -- do not invent a second node for it; the design will put that
+   end on net "0".
    A CURRENT target names a "role" instead, never a net. "The load current
    waveform" is {{"kind": "current_waveform", "role": "load"}} -- NOT a
    "waveform" target on the load's node, which would measure a voltage and
@@ -186,6 +189,11 @@ RULES:
    which one is the load unless it is named. Any component the intent
    measures BY NAME ("the current through R3") must exist with EXACTLY that
    ref.
+   A QUESTION IN PARTS is SEPARATE circuits in one file, sharing only net
+   "0". When the intent's node names carry part suffixes (vin_i / vin_ii,
+   vout_a / vout_b), give EACH part its own source and load with the same
+   suffix -- V1_i and RL_i, V1_ii and RL_ii -- and never connect one source
+   to two parts' nodes. One pin on one net; each part's nets are its own.
 
 3. NETS. A net is a NODE: every pin that touches one junction, listed once
    under one name, written "REF.pin". Never write two nets for one junction

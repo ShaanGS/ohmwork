@@ -496,3 +496,15 @@ def test_the_intent_prompt_makes_a_stated_input_amplitude_a_checked_target():
     # and the DC-output rule no longer swallows a clamper's level shift
     assert 'a\n   clamper\'s "DC level shift" is "dc_level"' in INTENT_PROMPT.replace("\r\n", "\n") \
         or '"DC level shift" is "dc_level"' in INTENT_PROMPT
+
+
+def test_the_prompts_handle_a_question_in_parts():
+    """MEASURED 2026-09-02 on the Exp 4.7 clamper (two circuits): the
+    design prompt insisted the source be V1, so one source was wired to
+    both parts' nodes six attempts running, and the intent prompt's
+    floating-source rule made the model invent a second node for a grounded
+    source. Both rules now say what a question in parts needs."""
+    from ohmwork.analog import DESIGN_PROMPT, INTENT_PROMPT
+    assert "A QUESTION IN PARTS is SEPARATE circuits" in DESIGN_PROMPT
+    assert "V1_i and RL_i" in DESIGN_PROMPT
+    assert "A source with one end on GROUND" in INTENT_PROMPT

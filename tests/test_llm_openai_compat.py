@@ -295,3 +295,33 @@ def test_every_openai_compatible_provider_has_a_base_url_and_a_signup_url():
     for name in llm.BASE_URL:
         assert llm.BASE_URL[name].startswith("https://"), name
         assert name in llm.SIGNUP_URL, name
+
+
+# ------------------------------------------- reasoning effort (2026-09-02)
+
+def test_a_gpt_oss_model_is_asked_for_low_reasoning_effort(monkeypatch):
+    """MEASURED on the two-circuit clamper design: at the default effort three
+    of six replies were invalid JSON or lacked 'nets' -- the model spent the
+    budget thinking. The design step is transcription, so effort is low."""
+    monkeypatch.delenv("OHMWORK_REASONING_EFFORT", raising=False)
+    transport = FakeTransport(chat_reply("{}"))
+    provider = make("groq", transport, model="openai/gpt-oss-120b")
+    provider.complete("p", max_tokens=100, json_object=True)
+    assert transport.requests[0]["payload"]["reasoning_effort"] == "low"
+
+
+def test_a_non_reasoning_model_gets_no_effort_parameter(monkeypatch):
+    monkeypatch.delenv("OHMWORK_REASONING_EFFORT", raising=False)
+    transport = FakeTransport(chat_reply("{}"))
+    provider = make("mistral", transport, model="mistral-medium-latest")
+    provider.complete("p", max_tokens=100)
+    assert "reasoning_effort" not in transport.requests[0]["payload"]
+
+
+def test_the_effort_is_configurable_and_an_empty_value_sends_nothing(monkeypatch):
+    monkeypatch.setenv("OHMWORK_REASONING_EFFORT", "high")
+    assert llm.reasoning_extra("openai/gpt-oss-20b") == {"reasoning_effort": "high"}
+    monkeypatch.setenv("OHMWORK_REASONING_EFFORT", "")
+    assert llm.reasoning_extra("openai/gpt-oss-20b") == {}
+    monkeypatch.setenv("OHMWORK_REASONING_EFFORT", "extreme")
+    assert llm.reasoning_extra("openai/gpt-oss-20b") == {}
