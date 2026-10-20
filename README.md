@@ -1,17 +1,10 @@
 <div align="center">
 
-<img src="landing/logo.png" alt="Ohmwork mascot" width="120" />
+<img src="docs/logo.png" alt="Ohmwork mascot" width="110" />
 
 # Ohmwork
 
-**Type an electronics-lab question in plain English. Get the circuit file and the answer, checked by a real simulator.**
-
-[![tests](https://github.com/ShaanGS/ohmwork/actions/workflows/ci.yml/badge.svg)](https://github.com/ShaanGS/ohmwork/actions/workflows/ci.yml)
-[![docker](https://github.com/ShaanGS/ohmwork/actions/workflows/docker.yml/badge.svg)](https://github.com/ShaanGS/ohmwork/actions/workflows/docker.yml)
-[![release](https://img.shields.io/github/v/release/ShaanGS/ohmwork?label=release&color=c8f542&labelColor=1a1a1a)](https://github.com/ShaanGS/ohmwork/releases/latest)
-[![python](https://img.shields.io/badge/python-3.12%2B-3776ab?logo=python&logoColor=white)](pyproject.toml)
-[![license](https://img.shields.io/badge/license-MIT-black)](LICENSE)
-[![stars](https://img.shields.io/github/stars/ShaanGS/ohmwork?style=flat&color=c8f542&labelColor=1a1a1a)](https://github.com/ShaanGS/ohmwork/stargazers)
+Go from lab question to a verified circuit.
 
 [**Download for Windows**](https://github.com/ShaanGS/ohmwork/releases/latest/download/Ohmwork.Setup.0.1.1.exe) · [Website](https://shaangs.github.io/ohmwork/) · [Solved library](https://shaangs.github.io/ohmwork/library/) · [Architecture](ARCHITECTURE.md) · [Product spec](PRD.md)
 
